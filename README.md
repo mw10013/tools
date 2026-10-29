@@ -145,6 +145,47 @@ upstream Vite source is the bundled version's baseline and may omit Vite+ patche
 These shared snapshots have no metadata stamps; `status` reports presence only.
 Playwright is not managed in this iteration.
 
+## Text to speech
+
+```sh
+vp run tts gen "Hello world" --dry-run
+vp run tts gen "Hello world"
+vp run tts gen "Another take" --voice athena
+vp run tts play
+vp run tts play 1
+vp run tts play --device auto
+```
+
+Generation uses Cloudflare Workers AI with Aura 2 English and the `luna` voice
+by default. `--model aura-1` selects Aura 1; see `gen --help` for supported voices.
+Text must contain non-whitespace and fit within 500 Unicode code points.
+Credentials come from the shell's `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID`; `.env` files are not loaded.
+`--dry-run` previews the request, output path, and estimated cost without loading
+credentials, creating files, or sending a request. Cost estimates are bundled
+rates, not a live billing quote. Generation sends one paid request with no retries.
+
+Recordings live in this checkout's ignored `tmp/tts/` directory, regardless of
+the current working directory:
+
+```text
+tmp/tts/20261029-01-hello-world/
+  hello-world.mp3
+  hello-world.metadata.json
+```
+
+Folders use the UTC date, a daily sequence number, and a text excerpt. The metadata
+includes the spoken text, model, voice, and request details. `--output` chooses an
+MP3 path relative to this checkout or an absolute path; existing files are never
+overwritten. Custom outputs outside `tmp/tts/` are played by explicit path.
+Each worktree has its own disposable recordings; they are not shared or committed.
+
+Playback requires `mpv` and defaults to the Speakers + BlackHole device
+(`coreaudio/~:AMS2_StackedOutput:0`). Use `--device auto` for system output.
+With no argument, `play` chooses the newest recording under `tmp/tts/`; a number
+selects that daily sequence on the newest date containing it. A file path resolves
+relative to this checkout. `mpv --audio-device=help` lists available devices.
+
 ## Development
 
 ```sh

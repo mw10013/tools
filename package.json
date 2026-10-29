@@ -5,11 +5,13 @@
   "description": "CLI tools and automation",
   "type": "module",
   "imports": {
-    "#refs/*": "./src/refs/*"
+    "#refs/*": "./src/refs/*",
+    "#tts/*": "./src/tts/*"
   },
   "scripts": {
     "prepare": "vp config",
-    "refs": "vpx ./refs.ts"
+    "refs": "vpx ./refs.ts",
+    "tts": "vpx ./tts.ts"
   },
   "dependencies": {
     "@effect/platform-node": "4.0.5",
