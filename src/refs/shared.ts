@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as Process from "./process.ts";
+import * as ShopifyDocs from "./shopify-docs.ts";
 
 class SharedRefError extends Schema.TaggedError<SharedRefError>()(
   "SharedRefError",
@@ -21,10 +22,10 @@ export const directory = Effect.gen(function* () {
 });
 
 /** Stage archives before replacing disposable reading copies. */
-const download = Effect.fn("Shared.download")(function* (
+const replace = Effect.fn("Shared.replace")(function* <A, E, R>(
   root: string,
   name: string,
-  url: string,
+  fill: (contents: string) => Effect.Effect<A, E, R>,
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -48,18 +49,10 @@ const download = Effect.fn("Shared.download")(function* (
     directory: root,
     prefix: `.${name}-`,
   });
-  const archive = path.join(staging, "source.tar.gz");
   const contents = path.join(staging, "contents");
   const previous = path.join(staging, "previous");
   yield* fs.makeDirectory(contents);
-  yield* Process.run(root, "curl", ["-fsSL", url, "-o", archive]);
-  yield* Process.run(root, "tar", [
-    "-xzf",
-    archive,
-    "-C",
-    contents,
-    "--strip-components=1",
-  ]);
+  yield* fill(contents);
   yield* Effect.uninterruptible(
     Effect.gen(function* () {
       const exists = yield* fs.exists(destination);
@@ -77,6 +70,34 @@ const download = Effect.fn("Shared.download")(function* (
   );
   return destination;
 }, Effect.scoped);
+
+const download = (root: string, name: string, url: string) =>
+  replace(
+    root,
+    name,
+    Effect.fn("Shared.download")(function* (contents: string) {
+      const fs = yield* FileSystem.FileSystem;
+      const archive = yield* fs.makeTempFileScoped();
+      yield* Process.run(root, "curl", ["-fsSL", url, "-o", archive]);
+      yield* Process.run(root, "tar", [
+        "-xzf",
+        archive,
+        "-C",
+        contents,
+        "--strip-components=1",
+      ]);
+    }),
+  );
+
+export const shopifyDocsStatus = (root: string) =>
+  presence(root, "shopify-docs");
+export const shopifyDocsSync = (root: string) =>
+  replace(root, "shopify-docs", ShopifyDocs.downloadInto).pipe(
+    Effect.map(
+      (destination) =>
+        `shopify-docs: downloaded latest developer docs and Flow manual (${destination})`,
+    ),
+  );
 
 const presence = Effect.fn("Shared.presence")(function* (
   root: string,

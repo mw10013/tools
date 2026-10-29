@@ -60,6 +60,7 @@ const source = {
     "effect",
     "cloudflare-docs",
     "shopify-cli",
+    "shopify-docs",
   ]).pipe(
     Argument.withDescription(
       "Reference to inspect or download (default: effect)",
@@ -84,6 +85,9 @@ const status = Command.make(
       Match.when("shopify-cli", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.shopifyStatus)),
       ),
+      Match.when("shopify-docs", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.shopifyDocsStatus)),
+      ),
       Match.exhaustive,
       Effect.flatMap(Console.log),
       userError,
@@ -92,7 +96,7 @@ const status = Command.make(
 ).pipe(
   Command.withShortDescription("Inspect local reference sources"),
   Command.withDescription(
-    "Inspect local sources without network access. Effect is compared with the project pin; Cloudflare docs reports directory presence. Remote freshness is not checked.",
+    "Inspect local sources without network access. Effect is compared with the project pin; Shared references report directory presence. Remote freshness is not checked.",
   ),
   Command.withExamples([
     {
@@ -119,6 +123,9 @@ const sync = Command.make(
       Match.when("shopify-cli", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.shopifySync)),
       ),
+      Match.when("shopify-docs", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.shopifyDocsSync)),
+      ),
       Match.exhaustive,
       Effect.flatMap(Console.log),
       userError,
@@ -127,7 +134,7 @@ const sync = Command.make(
 ).pipe(
   Command.withShortDescription("Download or synchronize reference sources"),
   Command.withDescription(
-    "Effect follows the project pin. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Shopify CLI downloads source matching the installed `shopify version`.",
+    "Effect follows the project pin. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Shopify CLI downloads source matching the installed `shopify version`. Shopify docs refreshes latest developer docs and the Flow manual with local images.",
   ),
   Command.withExamples([
     {
@@ -141,6 +148,10 @@ const sync = Command.make(
     {
       command: "vpx ./refs.ts sync shopify-cli",
       description: "Download source matching the installed Shopify CLI",
+    },
+    {
+      command: "vpx ./refs.ts sync shopify-docs",
+      description: "Refresh latest developer docs, Flow manual, and images",
     },
   ]),
 );

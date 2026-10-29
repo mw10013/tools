@@ -67,6 +67,7 @@ vpx /Users/mw/projects/tools/refs.ts --project /path/to/project sync effect
 vpx ./refs.ts sync cloudflare-docs
 vpx ./refs.ts status cloudflare-docs
 vpx ./refs.ts sync shopify-cli
+vpx ./refs.ts sync shopify-docs
 ```
 
 Shared sources live beside the tools repository by default, for example
@@ -93,7 +94,17 @@ Existing Git checkouts are refused rather than converted or replaced.
 All commands now use `refs.ts`; the former `references.ts`, `references.json`,
 and `src/references/` implementation have been removed. The optional reference
 argument still defaults to `effect`. Shared downloads must be named explicitly.
-Shopify developer documentation mirroring is not implemented yet.
+Shopify docs combines Baton's selected developer documentation with the complete
+Shopify Flow Help Center manual in `shopify-docs/`. Developer Markdown lives under
+`dev/docs/`, Flow Markdown under `flow/`, and shared images under `_assets/`.
+API documentation, including webhook topics, follows `latest`. Discovery uses
+Shopify's sitemaps and pages are downloaded through their native `.md` endpoints;
+webhook topics are rendered from Shopify's `.data` endpoint.
+
+Each explicit sync refreshes the combined snapshot. A failed page preserves the
+previous copy; failed images retain their online URLs and print a warning. Flow
+requests are paced and retried to handle rate limits. No config, lockfile, or
+metadata stamp is written. A full download takes several minutes.
 
 ## Development
 
@@ -107,7 +118,8 @@ commands directly.
 - `refs.ts`: project refs executable; only runtime wiring.
 - `src/refs/command.ts`: Effect command definitions and help.
 - `src/refs/project.ts`: project setup and Effect snapshots.
-- `src/refs/shared.ts`: Cloudflare and Shopify CLI source archive downloads.
+- `src/refs/shared.ts`: shared snapshot replacement and source archive downloads.
+- `src/refs/shopify-docs.ts`: developer docs, Flow manual, and local images.
 - `src/refs/process.ts`: scoped child-process execution.
 - `vite.config.ts`: formatting, lint, and TypeScript checks.
 
