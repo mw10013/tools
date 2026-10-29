@@ -113,6 +113,42 @@ const presence = Effect.fn("Shared.presence")(function* (
 export const cloudflareStatus = (root: string) =>
   presence(root, "cloudflare-docs");
 
+export const cloudflareCliStatus = (root: string) =>
+  presence(root, "cloudflare-cli");
+
+export const cloudflareCliSync = Effect.fn("Shared.cloudflareCliSync")(
+  function* (root: string) {
+    const output = yield* Process.run(".", "cf", ["--version"]).pipe(
+      Effect.mapError(
+        () =>
+          new SharedRefError({
+            message: "Cannot read the installed CF version",
+          }),
+      ),
+    );
+    const version = yield* Schema.decodeUnknownEffect(
+      Schema.String.check(
+        Schema.isPattern(
+          /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u,
+        ),
+      ),
+    )(output).pipe(
+      Effect.mapError(
+        () =>
+          new SharedRefError({
+            message: "Could not parse the version reported by `cf --version`",
+          }),
+      ),
+    );
+    const destination = yield* download(
+      root,
+      "cloudflare-cli",
+      `https://codeload.github.com/cloudflare/cf/tar.gz/refs/tags/cf@${version}`,
+    );
+    return `cloudflare-cli: downloaded ${version} (${destination})`;
+  },
+);
+
 export const cloudflareSync = Effect.fn("Shared.cloudflareSync")(function* (
   root: string,
 ) {

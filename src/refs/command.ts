@@ -59,6 +59,7 @@ const source = {
   reference: Argument.Literals("reference", [
     "effect",
     "cloudflare-docs",
+    "cloudflare-cli",
     "shopify-cli",
     "shopify-docs",
     "vite-plus",
@@ -109,6 +110,9 @@ const status = Command.make(
       ),
       Match.when("cloudflare-docs", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.cloudflareStatus)),
+      ),
+      Match.when("cloudflare-cli", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.cloudflareCliStatus)),
       ),
       Match.when("shopify-cli", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.shopifyStatus)),
@@ -166,6 +170,9 @@ const sync = Command.make(
       Match.when("cloudflare-docs", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.cloudflareSync)),
       ),
+      Match.when("cloudflare-cli", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.cloudflareCliSync)),
+      ),
       Match.when("shopify-cli", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.shopifySync)),
       ),
@@ -180,7 +187,7 @@ const sync = Command.make(
 ).pipe(
   Command.withShortDescription("Download or synchronize reference sources"),
   Command.withDescription(
-    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Effect, TanStack Start/Form, Better Auth, Alchemy, and Playwright follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Shopify CLI downloads source matching the installed `shopify version`. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code.",
+    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Effect, TanStack Start/Form, Better Auth, Alchemy, and Playwright follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Cloudflare CLI and Shopify CLI download source matching their installed versions. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code.",
   ),
   Command.withExamples([
     {
