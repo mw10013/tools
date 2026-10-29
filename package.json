@@ -5,12 +5,14 @@
   "description": "CLI tools and automation",
   "type": "module",
   "imports": {
-    "#references/*": "./src/references/*"
+    "#references/*": "./src/references/*",
+    "#refs/*": "./src/refs/*"
   },
   "scripts": {
     "references": "vpx ./references.ts",
     "prepare": "vp config",
-    "test": "vpx --test test/*.test.ts"
+    "test": "vpx --test test/*.test.ts",
+    "refs": "vpx ./refs.ts"
   },
   "dependencies": {
     "@effect/platform-node": "4.0.5",

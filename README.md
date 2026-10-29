@@ -8,6 +8,54 @@ Each tool has a named TypeScript entry point at the repository root.
 Install Vite+ (`vp`) and Git, then run `vp install`.
 The project pins Node and pnpm in `package.json` and dependencies in `pnpm-lock.yaml`.
 
+## Project references
+
+```sh
+vpx ./refs.ts init
+vpx ./refs.ts sync effect
+vpx ./refs.ts status
+```
+
+`refs.ts` currently supports Effect source snapshots. It reads the exact `effect`
+pin from the target project's `package.json` (dependencies or devDependencies),
+resolves `effect@<version>`, and downloads the source archive at that commit.
+Version ranges and catalog references are rejected in this first iteration.
+Git, curl, and tar must be available.
+
+`init` ensures the root `.gitignore` contains `/refs` (without a trailing slash,
+so it ignores both directories and symlinks) and prepares the directory or worktree
+link. It is safe to rerun, never edits `AGENTS.md`, and does not fetch source.
+
+`package.json` is the version authority; there are no project reference config or
+lock files. The ignored `refs/effect/.ref.json` stamp records the downloaded
+version, commit, and fetch date. `sync` skips an existing snapshot matching the
+pin; changing the pin resolves and downloads the new release. `status` compares
+the stamp against the pin without network access or checking source files for edits.
+
+The main checkout owns `refs/`. In a linked worktree, `init` creates or verifies a
+symlink to the main checkout's directory, refusing to replace an existing directory
+or unexpected link. Before synchronization, worktrees with an Effect dependency must agree on
+the Effect pin. A directory lock prevents concurrent writers. If a process is
+killed without cleanup, confirm no sync is running before removing
+`refs/.sync-lock`.
+
+Source snapshots are disposable reading copies. Repeated syncs of the same
+snapshot skip downloading. A version change stages the new archive and replaces
+the previous copy only after successful extraction; do not keep edits in these
+snapshots. Directories without the tool's `.ref.json` stamp are never replaced.
+
+To operate on another project, invoke the entry point by absolute path and pass
+`--project`:
+
+```sh
+vpx /Users/mw/projects/tools/refs.ts --project /path/to/project init
+vpx /Users/mw/projects/tools/refs.ts --project /path/to/project sync effect
+```
+
+The existing shared-reference manager below remains available separately during
+this first iteration; shared sources and website mirrors are not yet integrated
+into `refs.ts`.
+
 ## Shared references
 
 ```sh
