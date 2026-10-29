@@ -1,0 +1,32 @@
+{
+  "name": "tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI tools and automation",
+  "type": "module",
+  "imports": {
+    "#references/*": "./src/references/*"
+  },
+  "scripts": {
+    "references": "vpx src/references/cli.ts",
+    "prepare": "vp config",
+    "test": "vpx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.5",
+    "effect": "4.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vite-plus": "1.4.0"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.22.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@12.11.2"
+}

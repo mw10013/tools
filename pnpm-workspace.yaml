@@ -1,0 +1,8 @@
+saveExact: true
+runtimeOnFail: ignore
+pmOnFail: ignore
+overrides:
+  "@effect/platform-node-shared": 4.0.5
+peerDependencyRules:
+  allowedVersions:
+    vite: "*"
