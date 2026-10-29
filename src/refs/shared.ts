@@ -110,6 +110,73 @@ const presence = Effect.fn("Shared.presence")(function* (
   return `${name}: ${(yield* fs.exists(destination)) ? "present" : "missing"} (${destination})`;
 });
 
+export const chromeDevtoolsStatus = (root: string) =>
+  presence(root, "chrome-devtools");
+export const t3Status = (root: string) => presence(root, "t3code");
+
+const installedVersionSync = Effect.fn("Shared.installedVersionSync")(
+  function* (
+    root: string,
+    name: string,
+    executable: string,
+    args: readonly string[],
+    repository: string,
+    tagPrefix: string,
+  ) {
+    const output = yield* Process.run(".", executable, args).pipe(
+      Effect.mapError(
+        () =>
+          new SharedRefError({
+            message: `Cannot read the installed ${name} version`,
+          }),
+      ),
+    );
+    const version = yield* Schema.decodeUnknownEffect(
+      Schema.String.check(
+        Schema.isPattern(
+          /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u,
+        ),
+      ),
+    )(output).pipe(
+      Effect.mapError(
+        () =>
+          new SharedRefError({
+            message: `Could not parse the installed ${name} version`,
+          }),
+      ),
+    );
+    const destination = yield* download(
+      root,
+      name,
+      `https://codeload.github.com/${repository}/tar.gz/refs/tags/${tagPrefix}${version}`,
+    );
+    return `${name}: downloaded ${version} (${destination})`;
+  },
+);
+
+export const chromeDevtoolsSync = (root: string) =>
+  installedVersionSync(
+    root,
+    "chrome-devtools",
+    "chrome-devtools",
+    ["--version"],
+    "ChromeDevTools/chrome-devtools-mcp",
+    "chrome-devtools-mcp-v",
+  );
+export const t3Sync = (root: string) =>
+  installedVersionSync(
+    root,
+    "t3code",
+    "/usr/libexec/PlistBuddy",
+    [
+      "-c",
+      "Print :CFBundleShortVersionString",
+      "/Applications/T3 Code (Nightly).app/Contents/Info.plist",
+    ],
+    "pingdotgg/t3code",
+    "v",
+  );
+
 export const cloudflareStatus = (root: string) =>
   presence(root, "cloudflare-docs");
 
