@@ -39,6 +39,7 @@ ranges are rejected.
 | `better-auth`    | `better-auth`                      |
 | `alchemy`        | `alchemy`                          |
 | `playwright`     | `@playwright/test` or `playwright` |
+| `shopify-app-js` | `@shopify/shopify-api`             |
 
 For example, `vpx ./refs.ts -p /path/to/project sync tanstack-start` downloads into
 that project's shared `refs/tanstack-start/` directory. An undeclared dependency fails
@@ -46,6 +47,8 @@ with a clear message. Start's repository archive also includes Router source.
 Playwright downloads the monorepo into `refs/playwright/`, preferring the
 `@playwright/test` pin when both packages are declared. It is included in automatic
 project sync; the globally installed browser CLI has no effect on refs.
+Shopify App JS downloads the repository at the release tag for the pinned
+`@shopify/shopify-api` version.
 Git, curl, and tar must be available.
 
 Running without arguments shows help. Each subcommand has `--help` with examples;

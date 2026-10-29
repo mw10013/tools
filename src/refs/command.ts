@@ -72,6 +72,7 @@ const source = {
     "better-auth",
     "alchemy",
     "playwright",
+    "shopify-app-js",
   ]).pipe(
     Argument.withDescription(
       "Reference to inspect or download; omitted selects all declared project dependencies",
@@ -100,6 +101,7 @@ const status = Command.make(
           "better-auth",
           "alchemy",
           "playwright",
+          "shopify-app-js",
         ),
         (reference) => Project.status(project, reference),
       ),
@@ -167,6 +169,7 @@ const sync = Command.make(
           "better-auth",
           "alchemy",
           "playwright",
+          "shopify-app-js",
         ),
         (reference) => Project.sync(project, reference),
       ),

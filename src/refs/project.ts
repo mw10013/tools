@@ -42,6 +42,11 @@ export const sources = {
     dependency: "alchemy",
     tag: "v",
   },
+  "shopify-app-js": {
+    repository: "Shopify/shopify-app-js",
+    dependency: "@shopify/shopify-api",
+    tag: "@shopify/shopify-api@",
+  },
 } as const;
 export type Reference = keyof typeof sources;
 
