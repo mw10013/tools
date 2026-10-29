@@ -33,6 +33,7 @@ ranges are rejected.
 
 | Reference        | Dependency                         |
 | ---------------- | ---------------------------------- |
+| `astryx`         | `@astryxdesign/core`               |
 | `effect`         | `effect`                           |
 | `tanstack-start` | `@tanstack/react-start`            |
 | `tanstack-form`  | `@tanstack/react-form`             |
@@ -49,6 +50,8 @@ Playwright downloads the monorepo into `refs/playwright/`, preferring the
 project sync; the globally installed browser CLI has no effect on refs.
 Shopify App JS downloads the repository at the release tag for the pinned
 `@shopify/shopify-api` version.
+Astryx downloads the repository at the `v`-prefixed release tag for the pinned
+`@astryxdesign/core` version.
 Git, curl, and tar must be available.
 
 Running without arguments shows help. Each subcommand has `--help` with examples;

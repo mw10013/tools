@@ -57,6 +57,7 @@ const init = Command.make(
 
 const source = {
   reference: Argument.Literals("reference", [
+    "astryx",
     "effect",
     "cloudflare-docs",
     "cloudflare-cli",
@@ -95,6 +96,7 @@ const status = Command.make(
       Match.when("project", () => Project.statusAll(project)),
       Match.when(
         Match.is(
+          "astryx",
           "effect",
           "tanstack-start",
           "tanstack-form",
@@ -163,6 +165,7 @@ const sync = Command.make(
       Match.when("project", () => Project.syncAll(project)),
       Match.when(
         Match.is(
+          "astryx",
           "effect",
           "tanstack-start",
           "tanstack-form",
@@ -204,7 +207,7 @@ const sync = Command.make(
 ).pipe(
   Command.withShortDescription("Download or synchronize reference sources"),
   Command.withDescription(
-    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Effect, TanStack Start/Form, Better Auth, Alchemy, and Playwright follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Cloudflare CLI, Chrome DevTools, Shopify CLI, and T3 Code follow their installed versions. T3 Code reads the macOS nightly app version. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code.",
+    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Astryx, Effect, TanStack Start/Form, Better Auth, Alchemy, Playwright, and Shopify App JS follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Cloudflare CLI, Chrome DevTools, Shopify CLI, and T3 Code follow their installed versions. T3 Code reads the macOS nightly app version. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code.",
   ),
   Command.withExamples([
     {
