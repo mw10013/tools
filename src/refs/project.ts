@@ -17,12 +17,12 @@ export const sources = {
     dependency: "effect",
     tag: "effect@",
   },
-  "tan-start": {
+  "tanstack-start": {
     repository: "TanStack/router",
     dependency: "@tanstack/react-start",
     tag: "@tanstack/react-start@",
   },
-  "tan-form": {
+  "tanstack-form": {
     repository: "TanStack/form",
     dependency: "@tanstack/react-form",
     tag: "@tanstack/react-form@",

@@ -22,7 +22,7 @@ vpx ./refs.ts sync --help
 Run `sync` without a reference name to initialize refs and synchronize every
 supported dependency declared in the project. Undeclared dependencies are skipped.
 `status` without a name reports those same dependencies without modifying files or
-accessing the network. Explicit requests such as `sync tan-form` fail clearly if
+accessing the network. Explicit requests such as `sync tanstack-form` fail clearly if
 the dependency is not declared. Invalid declared pins fail rather than being skipped.
 
 Project source snapshots read exact dependency pins from the target project's
@@ -31,17 +31,17 @@ download source archives at the resolved commits. Default and named `catalog:`
 references resolve through the nearest ancestor `pnpm-workspace.yaml`. Version
 ranges are rejected.
 
-| Reference     | Dependency                         |
-| ------------- | ---------------------------------- |
-| `effect`      | `effect`                           |
-| `tan-start`   | `@tanstack/react-start`            |
-| `tan-form`    | `@tanstack/react-form`             |
-| `better-auth` | `better-auth`                      |
-| `alchemy`     | `alchemy`                          |
-| `playwright`  | `@playwright/test` or `playwright` |
+| Reference        | Dependency                         |
+| ---------------- | ---------------------------------- |
+| `effect`         | `effect`                           |
+| `tanstack-start` | `@tanstack/react-start`            |
+| `tanstack-form`  | `@tanstack/react-form`             |
+| `better-auth`    | `better-auth`                      |
+| `alchemy`        | `alchemy`                          |
+| `playwright`     | `@playwright/test` or `playwright` |
 
-For example, `vpx ./refs.ts -p /path/to/project sync tan-start` downloads into
-that project's shared `refs/tan-start/` directory. An undeclared dependency fails
+For example, `vpx ./refs.ts -p /path/to/project sync tanstack-start` downloads into
+that project's shared `refs/tanstack-start/` directory. An undeclared dependency fails
 with a clear message. Start's repository archive also includes Router source.
 Playwright downloads the monorepo into `refs/playwright/`, preferring the
 `@playwright/test` pin when both packages are declared. It is included in automatic

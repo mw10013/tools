@@ -67,8 +67,8 @@ const source = {
     "vite-plus",
     "vite",
     "vitest",
-    "tan-start",
-    "tan-form",
+    "tanstack-start",
+    "tanstack-form",
     "better-auth",
     "alchemy",
     "playwright",
@@ -95,8 +95,8 @@ const status = Command.make(
       Match.when(
         Match.is(
           "effect",
-          "tan-start",
-          "tan-form",
+          "tanstack-start",
+          "tanstack-form",
           "better-auth",
           "alchemy",
           "playwright",
@@ -162,8 +162,8 @@ const sync = Command.make(
       Match.when(
         Match.is(
           "effect",
-          "tan-start",
-          "tan-form",
+          "tanstack-start",
+          "tanstack-form",
           "better-auth",
           "alchemy",
           "playwright",
@@ -231,7 +231,7 @@ const sync = Command.make(
         "Download source matching global Vite+; vite and vitest use its bundled versions",
     },
     {
-      command: "vpx ./refs.ts -p /path/to/project sync tan-start",
+      command: "vpx ./refs.ts -p /path/to/project sync tanstack-start",
       description: "Download source matching the project's TanStack Start pin",
     },
   ]),
