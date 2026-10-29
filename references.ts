@@ -8,8 +8,8 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
-import * as Checkouts from "./checkouts.ts";
-import * as Sources from "./sources.ts";
+import * as Checkouts from "#references/checkouts.ts";
+import * as Sources from "#references/sources.ts";
 
 const OPTIONS = {
   name: Argument.Literals("name", [

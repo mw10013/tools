@@ -8,7 +8,7 @@
     "#references/*": "./src/references/*"
   },
   "scripts": {
-    "references": "vpx src/references/cli.ts",
+    "references": "vpx ./references.ts",
     "prepare": "vp config",
     "test": "vpx --test test/*.test.ts"
   },

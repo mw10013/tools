@@ -1,7 +1,7 @@
 # Tools
 
 CLI tools and automation, written in TypeScript with Effect and run with Vite+.
-Each tool has its own entry point and package command.
+Each tool has a named TypeScript entry point at the repository root.
 
 ## Setup
 
@@ -9,6 +9,13 @@ Install Vite+ (`vp`) and Git, then run `vp install`.
 The project pins Node and pnpm in `package.json` and dependencies in `pnpm-lock.yaml`.
 
 ## Shared references
+
+```sh
+vpx ./references.ts status
+vpx ./references.ts sync cloudflare-docs
+```
+
+The package command is also available as a shortcut:
 
 ```sh
 vp run references status
@@ -56,7 +63,7 @@ No global installation or PATH changes are required. For direct execution
 without package-task banners:
 
 ```sh
-vpx /Users/mw/projects/tools/src/references/cli.ts status
+vpx /Users/mw/projects/tools/references.ts status
 ```
 
 ## Development
@@ -69,11 +76,12 @@ vp run test
 Integration tests use temporary local Git repositories; they do not contact
 GitHub or modify reference checkouts.
 
-- `src/references/cli.ts`: Effect CLI entry point.
+- `references.ts`: Effect CLI entry point.
 - `src/references/sources.ts`: source definitions and configuration decoding.
 - `src/references/checkouts.ts`: checkout inspection and synchronization.
 - `references.json`: Shopify CLI source release pin.
 - `vite.config.ts`: formatting, lint, and TypeScript checks.
 
-Add future tools in their own `src/<tool>/` directory with a corresponding
-package script. Introduce shared modules when multiple tools need them.
+Give future tools named entry points at the repository root, with supporting
+modules in `src/<tool>/` as needed. Introduce shared modules when multiple tools
+need them.
