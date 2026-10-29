@@ -11,7 +11,7 @@ import * as Path from "effect/Path";
 import * as Checkouts from "./checkouts.ts";
 import * as Sources from "./sources.ts";
 
-const options = {
+const OPTIONS = {
   name: Argument.Literals("name", [
     "cloudflare-docs",
     "shopify-cli",
@@ -41,7 +41,7 @@ const handler =
       ),
     );
 
-const runOperation = Effect.fn("References.run")(function* (
+const runOperation = Effect.fn("References.runOperation")(function* (
   operation: typeof Checkouts.status,
   args: { readonly name: string; readonly directory: Option.Option<string> },
 ) {
@@ -57,15 +57,15 @@ const runOperation = Effect.fn("References.run")(function* (
   }
 });
 
-const references = Command.make("references").pipe(
+const REFERENCES = Command.make("references").pipe(
   Command.withDescription("Set up and maintain shared reference sources."),
   Command.withSubcommands([
-    Command.make("status", options, handler(Checkouts.status)).pipe(
+    Command.make("status", OPTIONS, handler(Checkouts.status)).pipe(
       Command.withDescription(
         "Inspect local checkouts without network access; remote freshness is not checked.",
       ),
     ),
-    Command.make("sync", options, handler(Checkouts.sync)).pipe(
+    Command.make("sync", OPTIONS, handler(Checkouts.sync)).pipe(
       Command.withDescription(
         "Clone missing sources or update existing checkouts safely.",
       ),
@@ -74,7 +74,7 @@ const references = Command.make("references").pipe(
 );
 
 NodeRuntime.runMain(
-  references.pipe(
+  REFERENCES.pipe(
     Command.run({ version: "0.1.0" }),
     Effect.provide(NodeServices.layer),
   ),

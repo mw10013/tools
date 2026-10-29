@@ -19,7 +19,9 @@
   "devDependencies": {
     "@types/node": "24.19.2",
     "typescript": "7.0.2",
-    "vite-plus": "1.4.0"
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
   },
   "devEngines": {
     "runtime": {

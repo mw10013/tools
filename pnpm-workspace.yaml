@@ -1,8 +1,14 @@
 saveExact: true
 runtimeOnFail: ignore
 pmOnFail: ignore
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.4.0
+  vite-plus: 1.4.0
+  vitest: 5.0.5
 overrides:
   "@effect/platform-node-shared": 4.0.5
+  vite@*: "catalog:"
+  vitest@*: "catalog:"
 peerDependencyRules:
   allowedVersions:
     vite: "*"
