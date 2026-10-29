@@ -11,6 +11,7 @@ The project pins Node and pnpm in `package.json` and dependencies in `pnpm-lock.
 ## Project references
 
 ```sh
+vpx ./refs.ts sync
 vpx ./refs.ts init
 vpx ./refs.ts sync effect
 vpx ./refs.ts status
@@ -18,10 +19,29 @@ vpx ./refs.ts --help
 vpx ./refs.ts sync --help
 ```
 
-For Effect source snapshots, `refs.ts` reads the exact `effect`
-pin from the target project's `package.json` (dependencies or devDependencies),
-resolves `effect@<version>`, and downloads the source archive at that commit.
-Version ranges and catalog references are rejected in this first iteration.
+Run `sync` without a reference name to initialize refs and synchronize every
+supported dependency declared in the project. Undeclared dependencies are skipped.
+`status` without a name reports those same dependencies without modifying files or
+accessing the network. Explicit requests such as `sync tan-form` fail clearly if
+the dependency is not declared. Invalid declared pins fail rather than being skipped.
+
+Project source snapshots read exact dependency pins from the target project's
+`package.json` (dependencies or devDependencies), resolve their release tags, and
+download source archives at the resolved commits. Default and named `catalog:`
+references resolve through the nearest ancestor `pnpm-workspace.yaml`. Version
+ranges are rejected.
+
+| Reference     | Dependency              |
+| ------------- | ----------------------- |
+| `effect`      | `effect`                |
+| `tan-start`   | `@tanstack/react-start` |
+| `tan-form`    | `@tanstack/react-form`  |
+| `better-auth` | `better-auth`           |
+| `alchemy`     | `alchemy`               |
+
+For example, `vpx ./refs.ts -p /path/to/project sync tan-start` downloads into
+that project's shared `refs/tan-start/` directory. An undeclared dependency fails
+with a clear message. Start's repository archive also includes Router source.
 Git, curl, and tar must be available.
 
 Running without arguments shows help. Each subcommand has `--help` with examples;
@@ -34,17 +54,21 @@ status report.
 `init` ensures the root `.gitignore` contains `/refs` (without a trailing slash,
 so it ignores both directories and symlinks) and prepares the directory or worktree
 link. It is safe to rerun, never edits `AGENTS.md`, and does not fetch source.
+Project sync runs this same setup automatically, so `init` is optional. Shared
+sync commands do not initialize project refs.
 
 `package.json` is the version authority; there are no project reference config or
-lock files. The ignored `refs/effect/.ref.json` stamp records the downloaded
+lock files. The ignored `refs/<reference>/.ref.json` stamp records the downloaded
 version, commit, and fetch date. `sync` skips an existing snapshot matching the
-pin; changing the pin resolves and downloads the new release. `status` compares
+pin; changing the pin resolves and downloads the new release on the next sync.
+Removed dependencies are no longer synchronized; their existing folders are left alone. `status` compares
 the stamp against the pin without network access or checking source files for edits.
 
 The main checkout owns `refs/`. In a linked worktree, `init` creates or verifies a
 symlink to the main checkout's directory, refusing to replace an existing directory
-or unexpected link. Before synchronization, worktrees with an Effect dependency must agree on
-the Effect pin. A directory lock prevents concurrent writers. If a process is
+or unexpected link. From a new worktree, run `vpx /path/to/tools/refs.ts sync`;
+it prepares the symlink and synchronizes all matching project dependencies. Before synchronization, worktrees declaring the selected dependency must agree on
+its resolved pin. A directory lock prevents concurrent writers. If a process is
 killed without cleanup, confirm no sync is running before removing
 `refs/.sync-lock`.
 
@@ -68,13 +92,16 @@ vpx ./refs.ts sync cloudflare-docs
 vpx ./refs.ts status cloudflare-docs
 vpx ./refs.ts sync shopify-cli
 vpx ./refs.ts sync shopify-docs
+vpx ./refs.ts sync vite-plus
+vpx ./refs.ts sync vite
+vpx ./refs.ts sync vitest
 ```
 
 Shared sources live beside the tools repository by default, for example
 `/Users/mw/projects/cloudflare-docs` and `/Users/mw/projects/shopify-cli`.
 Use `--directory /path/to/projects` to override their parent directory. Relative
 paths resolve from the current working directory. `--project` selects the project
-for Effect and `init`; it does not change the shared destination.
+for project dependencies and `init`; it does not change the shared destination.
 
 Cloudflare docs is a fresh archive download of `cloudflare/cloudflare-docs`'s
 `production` branch on every explicit sync. No Git history, version configuration,
@@ -93,10 +120,14 @@ Existing Git checkouts are refused rather than converted or replaced.
 
 All commands now use `refs.ts`; the former `references.ts`, `references.json`,
 and `src/references/` implementation have been removed. The optional reference
-argument still defaults to `effect`. Shared downloads must be named explicitly.
+argument defaults to all matching project dependencies. Shared downloads must be
+named explicitly and are never included in a bare project sync.
 Shopify docs combines Baton's selected developer documentation with the complete
 Shopify Flow Help Center manual in `shopify-docs/`. Developer Markdown lives under
 `dev/docs/`, Flow Markdown under `flow/`, and shared images under `_assets/`.
+`polaris-code/` contains the original Shopify CDN runtime bundle and a formatted
+reading copy. Its README points back to the Polaris documentation under `dev/`;
+it is code, not a substitute for those docs. It refreshes with Shopify docs.
 API documentation, including webhook topics, follows `latest`. Discovery uses
 Shopify's sitemaps and pages are downloaded through their native `.md` endpoints;
 webhook topics are rendered from Shopify's `.data` endpoint.
@@ -105,6 +136,14 @@ Each explicit sync refreshes the combined snapshot. A failed page preserves the
 previous copy; failed images retain their online URLs and print a warning. Flow
 requests are paced and retried to handle rate limits. No config, lockfile, or
 metadata stamp is written. A full download takes several minutes.
+
+Vite+, Vite, and Vitest shared source archives follow `vp toolchain --global --json`.
+Each explicit sync reads the global installation's version and downloads its
+upstream release archive. The script locates the global `vp` outside `node_modules`
+because `vpx` prepends local binaries to PATH. Local project toolchains may differ;
+upstream Vite source is the bundled version's baseline and may omit Vite+ patches.
+These shared snapshots have no metadata stamps; `status` reports presence only.
+Playwright is not managed in this iteration.
 
 ## Development
 
@@ -117,7 +156,7 @@ commands directly.
 
 - `refs.ts`: project refs executable; only runtime wiring.
 - `src/refs/command.ts`: Effect command definitions and help.
-- `src/refs/project.ts`: project setup and Effect snapshots.
+- `src/refs/project.ts`: project setup, dependency pins, and source snapshots.
 - `src/refs/shared.ts`: shared snapshot replacement and source archive downloads.
 - `src/refs/shopify-docs.ts`: developer docs, Flow manual, and local images.
 - `src/refs/process.ts`: scoped child-process execution.

@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Config from "effect/Config";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Option from "effect/Option";
@@ -157,4 +158,89 @@ export const shopifySync = Effect.fn("Shared.shopifySync")(function* (
     `https://codeload.github.com/Shopify/cli/tar.gz/refs/tags/${version}`,
   );
   return `shopify-cli: downloaded ${version} (${destination})`;
+});
+
+const Toolchain = Schema.fromJsonString(
+  Schema.Struct({
+    schemaVersion: Schema.Literal(1),
+    source: Schema.Struct({
+      scope: Schema.Literal("global"),
+      vitePlusVersion: Schema.String,
+    }),
+    nodes: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        version: Schema.optional(Schema.String),
+      }),
+    ),
+  }),
+);
+const TOOLCHAIN_REPOSITORIES = {
+  "vite-plus": "voidzero-dev/vite-plus",
+  vite: "vitejs/vite",
+  vitest: "vitest-dev/vitest",
+} as const;
+export type Tool = keyof typeof TOOLCHAIN_REPOSITORIES;
+
+export const toolchainStatus = (root: string, tool: Tool) =>
+  presence(root, tool);
+
+export const toolchainSync = Effect.fn("Shared.toolchainSync")(function* (
+  root: string,
+  tool: Tool,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  // vpx prepends project binaries; locate vp outside node_modules to reach the global CLI.
+  const entries = (yield* Config.String("PATH")).split(
+    path.sep === "\\" ? ";" : ":",
+  );
+  const candidates = yield* Effect.filter(entries, (entry) =>
+    entry.split(/[\\/]/u).includes("node_modules")
+      ? Effect.succeed(false)
+      : fs.exists(path.join(entry, path.sep === "\\" ? "vp.exe" : "vp")),
+  );
+  const entry = candidates[0];
+  if (entry === undefined)
+    return yield* new SharedRefError({
+      message: "Global vp CLI was not found on PATH",
+    });
+  const executable = path.join(entry, path.sep === "\\" ? "vp.exe" : "vp");
+  const output = yield* Process.run(".", executable, [
+    "toolchain",
+    "--global",
+    "--json",
+  ]);
+  const toolchain = yield* Schema.decodeUnknownEffect(Toolchain)(output).pipe(
+    Effect.mapError(
+      () =>
+        new SharedRefError({
+          message: "Cannot decode `vp toolchain --global --json`",
+        }),
+    ),
+  );
+  const candidate =
+    tool === "vite-plus"
+      ? toolchain.source.vitePlusVersion
+      : toolchain.nodes.find((node) => node.id === tool)?.version;
+  const version = yield* Schema.decodeUnknownEffect(
+    Schema.String.check(
+      Schema.isPattern(
+        /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u,
+      ),
+    ),
+  )(candidate).pipe(
+    Effect.mapError(
+      () =>
+        new SharedRefError({
+          message: `Global Vite+ did not report a release version for ${tool}`,
+        }),
+    ),
+  );
+  const destination = yield* download(
+    root,
+    tool,
+    `https://codeload.github.com/${TOOLCHAIN_REPOSITORIES[tool]}/tar.gz/refs/tags/v${version}`,
+  );
+  return `${tool}: downloaded ${version} from global Vite+ toolchain (${destination})`;
 });

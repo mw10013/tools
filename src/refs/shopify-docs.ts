@@ -11,6 +11,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import zlib from "node:zlib";
+import * as Process from "./process.ts";
 
 export class ShopifyDocsError extends Schema.TaggedError<ShopifyDocsError>()(
   "ShopifyDocsError",
@@ -754,6 +755,7 @@ export const downloadInto = Effect.fn("ShopifyDocs.downloadInto")(function* (
     );
   }
   yield* downloadFlow(staging);
+  yield* downloadPolaris(staging);
   yield* localizeImages(staging);
 }, Effect.provide(FetchHttpClient.layer));
 
@@ -795,5 +797,38 @@ const downloadFlow = Effect.fn("ShopifyDocs.downloadFlow")(function* (
       );
     }),
     { concurrency: 1 },
+  );
+});
+
+const downloadPolaris = Effect.fn("ShopifyDocs.downloadPolaris")(function* (
+  staging: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const url = "https://cdn.shopify.com/shopifycloud/polaris-2.0.js";
+  const directory = path.join(staging, "polaris-code");
+  yield* fs.makeDirectory(directory);
+  const bytes = yield* requestBytes(url);
+  yield* fs.writeFile(path.join(directory, "polaris-2.0.min.js"), bytes);
+  const root = path.resolve(
+    path.dirname(yield* path.fromFileUrl(new URL(import.meta.url))),
+    "../..",
+  );
+  const formatted = yield* Process.run(
+    root,
+    "vp",
+    ["fmt", "--stdin-filepath=polaris-2.0.js"],
+    new TextDecoder().decode(bytes),
+  );
+  yield* fs.writeFileString(
+    path.join(directory, "polaris-2.0.js"),
+    `${formatted}\n`,
+  );
+  yield* fs.writeFileString(
+    path.join(directory, "README.md"),
+    `# Polaris runtime code\n\nThis directory contains Shopify's distributed JavaScript runtime bundle, not its documentation.\n\nFor Polaris documentation, see [../dev/docs/api/polaris.md](../dev/docs/api/polaris.md) and the other Polaris pages under ../dev/docs/.\n\nSource: ${url}\n\n- polaris-2.0.min.js: original CDN bytes.\n- polaris-2.0.js: formatted reading copy.\n`,
+  );
+  yield* Console.log(
+    "polaris-code: saved original and formatted runtime bundle",
   );
 });
