@@ -31,17 +31,21 @@ download source archives at the resolved commits. Default and named `catalog:`
 references resolve through the nearest ancestor `pnpm-workspace.yaml`. Version
 ranges are rejected.
 
-| Reference     | Dependency              |
-| ------------- | ----------------------- |
-| `effect`      | `effect`                |
-| `tan-start`   | `@tanstack/react-start` |
-| `tan-form`    | `@tanstack/react-form`  |
-| `better-auth` | `better-auth`           |
-| `alchemy`     | `alchemy`               |
+| Reference     | Dependency                         |
+| ------------- | ---------------------------------- |
+| `effect`      | `effect`                           |
+| `tan-start`   | `@tanstack/react-start`            |
+| `tan-form`    | `@tanstack/react-form`             |
+| `better-auth` | `better-auth`                      |
+| `alchemy`     | `alchemy`                          |
+| `playwright`  | `@playwright/test` or `playwright` |
 
 For example, `vpx ./refs.ts -p /path/to/project sync tan-start` downloads into
 that project's shared `refs/tan-start/` directory. An undeclared dependency fails
 with a clear message. Start's repository archive also includes Router source.
+Playwright downloads the monorepo into `refs/playwright/`, preferring the
+`@playwright/test` pin when both packages are declared. It is included in automatic
+project sync; the globally installed browser CLI has no effect on refs.
 Git, curl, and tar must be available.
 
 Running without arguments shows help. Each subcommand has `--help` with examples;
@@ -143,7 +147,6 @@ upstream release archive. The script locates the global `vp` outside `node_modul
 because `vpx` prepends local binaries to PATH. Local project toolchains may differ;
 upstream Vite source is the bundled version's baseline and may omit Vite+ patches.
 These shared snapshots have no metadata stamps; `status` reports presence only.
-Playwright is not managed in this iteration.
 
 ## Text to speech
 

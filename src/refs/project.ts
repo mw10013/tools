@@ -32,6 +32,11 @@ export const sources = {
     dependency: "better-auth",
     tag: "v",
   },
+  playwright: {
+    repository: "microsoft/playwright",
+    dependency: "@playwright/test",
+    tag: "v",
+  },
   alchemy: {
     repository: "alchemy-run/alchemy",
     dependency: "alchemy",
@@ -59,6 +64,21 @@ const Manifest = Schema.fromJsonString(
     ),
   }),
 );
+const declaredDependency = (
+  manifest: typeof Manifest.Type,
+  reference: Reference,
+) => {
+  const dependencies =
+    reference === "playwright"
+      ? ["@playwright/test", "playwright"]
+      : [sources[reference].dependency];
+  return dependencies.find(
+    (dependency) =>
+      manifest.dependencies?.[dependency] !== undefined ||
+      manifest.devDependencies?.[dependency] !== undefined,
+  );
+};
+
 const Snapshot = Schema.fromJsonString(
   Schema.Struct({
     repository: Schema.String,
@@ -100,7 +120,8 @@ export const version = Effect.fn("Project.version")(function* (
     yield* fs.readFileString(file),
     file,
   );
-  const dependency = sources[reference].dependency;
+  const dependency =
+    declaredDependency(manifest, reference) ?? sources[reference].dependency;
   let pin =
     manifest.dependencies?.[dependency] ??
     manifest.devDependencies?.[dependency];
@@ -276,13 +297,7 @@ const requireCompatibleWorktrees = Effect.fn(
           yield* fs.readFileString(path.join(directory, "package.json")),
           "package.json",
         );
-        if (
-          manifest.dependencies?.[sources[reference].dependency] ===
-            undefined &&
-          manifest.devDependencies?.[sources[reference].dependency] ===
-            undefined
-        )
-          return;
+        if (declaredDependency(manifest, reference) === undefined) return;
         const have = yield* version(directory, reference);
         if (have !== expected)
           return yield* new RefError({
@@ -424,13 +439,9 @@ const matching = Effect.fn("Project.matching")(function* (directory: string) {
     yield* fs.readFileString(file),
     file,
   );
-  return (Object.keys(sources) as Reference[]).filter((reference) => {
-    const dependency = sources[reference].dependency;
-    return (
-      manifest.dependencies?.[dependency] !== undefined ||
-      manifest.devDependencies?.[dependency] !== undefined
-    );
-  });
+  return (Object.keys(sources) as Reference[]).filter(
+    (reference) => declaredDependency(manifest, reference) !== undefined,
+  );
 });
 
 export const statusAll = Effect.fn("Project.statusAll")(function* (

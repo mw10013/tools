@@ -68,6 +68,7 @@ const source = {
     "tan-form",
     "better-auth",
     "alchemy",
+    "playwright",
   ]).pipe(
     Argument.withDescription(
       "Reference to inspect or download; omitted selects all declared project dependencies",
@@ -89,7 +90,14 @@ const status = Command.make(
     ).pipe(
       Match.when("project", () => Project.statusAll(project)),
       Match.when(
-        Match.is("effect", "tan-start", "tan-form", "better-auth", "alchemy"),
+        Match.is(
+          "effect",
+          "tan-start",
+          "tan-form",
+          "better-auth",
+          "alchemy",
+          "playwright",
+        ),
         (reference) => Project.status(project, reference),
       ),
       Match.when(Match.is("vite-plus", "vite", "vitest"), (tool) =>
@@ -140,7 +148,14 @@ const sync = Command.make(
     ).pipe(
       Match.when("project", () => Project.syncAll(project)),
       Match.when(
-        Match.is("effect", "tan-start", "tan-form", "better-auth", "alchemy"),
+        Match.is(
+          "effect",
+          "tan-start",
+          "tan-form",
+          "better-auth",
+          "alchemy",
+          "playwright",
+        ),
         (reference) => Project.sync(project, reference),
       ),
       Match.when(Match.is("vite-plus", "vite", "vitest"), (tool) =>
@@ -165,7 +180,7 @@ const sync = Command.make(
 ).pipe(
   Command.withShortDescription("Download or synchronize reference sources"),
   Command.withDescription(
-    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Effect, TanStack Start/Form, Better Auth, and Alchemy follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Shopify CLI downloads source matching the installed `shopify version`. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code.",
+    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Effect, TanStack Start/Form, Better Auth, Alchemy, and Playwright follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Shopify CLI downloads source matching the installed `shopify version`. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code.",
   ),
   Command.withExamples([
     {
