@@ -2,6 +2,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
@@ -43,27 +44,23 @@ const run = Effect.fn("Project.run")(function* (
   args: readonly string[],
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  return yield* Effect.scoped(
-    Effect.gen(function* () {
-      const process = yield* spawner.spawn(
-        ChildProcess.make(executable, args, {
-          cwd: directory,
-          stdin: "ignore",
-          stderr: "inherit",
-          env: { GIT_TERMINAL_PROMPT: "0" },
-          extendEnv: true,
-        }),
-      );
-      const text = yield* Stream.mkString(Stream.decodeText(process.stdout));
-      const exit = yield* process.exitCode;
-      if (exit !== 0)
-        return yield* new RefError({
-          message: `${executable} ${args[0]} failed (exit ${String(exit)})`,
-        });
-      return text.trim();
+  const process = yield* spawner.spawn(
+    ChildProcess.make(executable, args, {
+      cwd: directory,
+      stdin: "ignore",
+      stderr: "inherit",
+      env: { GIT_TERMINAL_PROMPT: "0" },
+      extendEnv: true,
     }),
   );
-});
+  const text = yield* Stream.mkString(Stream.decodeText(process.stdout));
+  const exit = yield* process.exitCode;
+  if (exit !== 0)
+    return yield* new RefError({
+      message: `${executable} ${args[0]} failed (exit ${String(exit)})`,
+    });
+  return text.trim();
+}, Effect.scoped);
 
 const checkout = Effect.fn("Project.checkout")(function* (directory: string) {
   const path = yield* Path.Path;
@@ -166,23 +163,36 @@ export const init = Effect.fn("Project.init")(function* (directory: string) {
   return `Initialized Effect references in ${project.root}`;
 });
 
-export const status = Effect.fn("Project.status")(function* (
-  directory: string,
+type Project = Effect.Success<ReturnType<typeof load>>;
+
+const readSnapshot = Effect.fn("Project.readSnapshot")(function* (
+  project: Project,
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const file = path.join(project.refs, "effect", ".ref.json");
+  if (!(yield* fs.exists(file))) return Option.none();
+  return Option.some(
+    yield* decode(Snapshot, yield* fs.readFileString(file), file),
+  );
+});
+
+const describeSnapshot = (
+  project: Project,
+  snapshot: Effect.Success<ReturnType<typeof readSnapshot>>,
+) =>
+  Option.match(snapshot, {
+    onNone: () => `effect: missing; want ${project.version}`,
+    onSome: (snapshot) =>
+      `effect: ${snapshot.version === project.version ? "ok" : "stale"}; have ${snapshot.version}, want ${project.version}; commit ${snapshot.commit}`,
+  });
+
+export const status = Effect.fn("Project.status")(function* (
+  directory: string,
+) {
   const project = yield* load(directory);
   yield* verifyLink(project);
-  const file = path.join(project.refs, "effect", ".ref.json");
-  if (!(yield* fs.exists(file)))
-    return `effect: missing; want ${project.version}`;
-  const snapshot = yield* decode(
-    Snapshot,
-    yield* fs.readFileString(file),
-    file,
-  );
-  const matches = snapshot.version === project.version;
-  return `effect: ${matches ? "ok" : "stale"}; have ${snapshot.version}, want ${project.version}; commit ${snapshot.commit}`;
+  return describeSnapshot(project, yield* readSnapshot(project));
 });
 
 const requireCompatibleWorktrees = Effect.fn(
@@ -223,27 +233,21 @@ const requireCompatibleWorktrees = Effect.fn(
 });
 
 const syncEffect = Effect.fn("Project.syncEffect")(function* (
-  directory: string,
+  project: Project,
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const project = yield* load(directory);
-  yield* verifyLink(project);
   yield* requireCompatibleWorktrees(project.root, project.version);
   yield* fs.makeDirectory(project.refs, { recursive: true });
   const destination = path.join(project.refs, "effect");
-  const snapshotFile = path.join(destination, ".ref.json");
-  if (yield* fs.exists(destination)) {
-    if (!(yield* fs.exists(snapshotFile)))
-      return yield* new RefError({
-        message: `${destination} is unmanaged; refusing to replace it`,
-      });
-    const snapshot = yield* decode(
-      Snapshot,
-      yield* fs.readFileString(snapshotFile),
-      snapshotFile,
-    );
-    if (snapshot.version === project.version) return yield* status(directory);
+  const snapshot = yield* readSnapshot(project);
+  if (Option.isSome(snapshot)) {
+    if (snapshot.value.version === project.version)
+      return describeSnapshot(project, snapshot);
+  } else if (yield* fs.exists(destination)) {
+    return yield* new RefError({
+      message: `${destination} is unmanaged; refusing to replace it`,
+    });
   }
   const tag = `refs/tags/effect@${project.version}`;
   const commit = yield* run(project.root, "git", [
@@ -313,7 +317,7 @@ const syncEffect = Effect.fn("Project.syncEffect")(function* (
       );
     }),
   );
-  return yield* status(directory);
+  return describeSnapshot(project, yield* readSnapshot(project));
 });
 
 /** Serialize writers across worktrees sharing the same snapshot directory. */
@@ -333,7 +337,7 @@ export const sync = Effect.fn("Project.sync")(function* (directory: string) {
           }),
       ),
     ),
-    () => syncEffect(directory),
+    () => syncEffect(project),
     () => fs.remove(lock, { recursive: true }).pipe(Effect.orDie),
   );
 });

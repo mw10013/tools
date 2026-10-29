@@ -14,6 +14,8 @@ The project pins Node and pnpm in `package.json` and dependencies in `pnpm-lock.
 vpx ./refs.ts init
 vpx ./refs.ts sync effect
 vpx ./refs.ts status
+vpx ./refs.ts --help
+vpx ./refs.ts sync --help
 ```
 
 `refs.ts` currently supports Effect source snapshots. It reads the exact `effect`
@@ -21,6 +23,13 @@ pin from the target project's `package.json` (dependencies or devDependencies),
 resolves `effect@<version>`, and downloads the source archive at that commit.
 Version ranges and catalog references are rejected in this first iteration.
 Git, curl, and tar must be available.
+
+Running without arguments shows help. Each subcommand has `--help` with examples;
+`--project` (or `-p`) selects an existing project directory before or after the
+subcommand. Effect supplies `--version`, usage validation, and shell completions
+(for example `vpx ./refs.ts --completions zsh`). Invalid invocations and failed
+operations exit nonzero; inspecting a missing or stale snapshot is a successful
+status report.
 
 `init` ensures the root `.gitignore` contains `/refs` (without a trailing slash,
 so it ignores both directories and symlinks) and prepares the directory or worktree
@@ -124,7 +133,10 @@ vp run test
 Integration tests use temporary local Git repositories; they do not contact
 GitHub or modify reference checkouts.
 
-- `references.ts`: Effect CLI entry point.
+- `refs.ts`: project refs executable; only runtime wiring.
+- `src/refs/command.ts`: Effect command definitions and help.
+- `src/refs/project.ts`: project setup and Effect snapshots.
+- `references.ts`: shared references executable.
 - `src/references/sources.ts`: source definitions and configuration decoding.
 - `src/references/checkouts.ts`: checkout inspection and synchronization.
 - `references.json`: Shopify CLI source release pin.
