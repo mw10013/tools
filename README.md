@@ -18,7 +18,7 @@ vpx ./refs.ts --help
 vpx ./refs.ts sync --help
 ```
 
-`refs.ts` currently supports Effect source snapshots. It reads the exact `effect`
+For Effect source snapshots, `refs.ts` reads the exact `effect`
 pin from the target project's `package.json` (dependencies or devDependencies),
 resolves `effect@<version>`, and downloads the source archive at that commit.
 Version ranges and catalog references are rejected in this first iteration.
@@ -61,85 +61,54 @@ vpx /Users/mw/projects/tools/refs.ts --project /path/to/project init
 vpx /Users/mw/projects/tools/refs.ts --project /path/to/project sync effect
 ```
 
-The existing shared-reference manager below remains available separately during
-this first iteration; shared sources and website mirrors are not yet integrated
-into `refs.ts`.
-
 ## Shared references
 
 ```sh
-vpx ./references.ts status
-vpx ./references.ts sync cloudflare-docs
+vpx ./refs.ts sync cloudflare-docs
+vpx ./refs.ts status cloudflare-docs
+vpx ./refs.ts sync shopify-cli
 ```
 
-The package command is also available as a shortcut:
+Shared sources live beside the tools repository by default, for example
+`/Users/mw/projects/cloudflare-docs` and `/Users/mw/projects/shopify-cli`.
+Use `--directory /path/to/projects` to override their parent directory. Relative
+paths resolve from the current working directory. `--project` selects the project
+for Effect and `init`; it does not change the shared destination.
 
-```sh
-vp run references status
-vp run references sync cloudflare-docs
-vp run references sync shopify-cli
-vp run references sync all
-vp run references sync --help
-```
+Cloudflare docs is a fresh archive download of `cloudflare/cloudflare-docs`'s
+`production` branch on every explicit sync. No Git history, version configuration,
+or metadata stamp is kept. `status` reports directory presence without checking
+upstream. Downloads and extraction happen in a temporary sibling directory; the
+previous copy is replaced after success. These are disposable reading snapshots:
+local edits are replaced on sync. Existing Git checkouts, files, and symlinks are
+refused. Run shared sync commands one at a time.
 
-The optional source argument defaults to `all`. Checkouts live beside the tools
-repository by default (for example `/Users/mw/projects/cloudflare-docs` and
-`/Users/mw/projects/shopify-cli`). Override the parent directory with
-`--directory /path/to/references`. Relative overrides resolve from the current
-working directory.
+Shopify CLI source is downloaded as a release archive matching `shopify version`
+on your PATH. Every explicit sync checks the installed version and downloads that
+release to `shopify-cli`. No hardcoded pin, Git history, or metadata stamp is kept.
+Missing or unparseable CLI versions fail with a clear error. `status` reports only
+whether the directory exists. This downloads source; it does not install the CLI.
+Existing Git checkouts are refused rather than converted or replaced.
 
-- **Cloudflare docs:** `cloudflare/cloudflare-docs`, tracking `production`.
-- **Shopify CLI source:** `Shopify/cli`, checked out at the release in
-  `references.json` with a detached HEAD. Edit `shopifyCliVersion` and run sync
-  to change releases. This manages source only; it does not install or upgrade
-  the globally installed Shopify CLI.
-
-Missing checkouts are shallow-cloned into a temporary sibling folder and moved
-into place after a successful clone. Failed clones are cleaned up. Existing
-Cloudflare checkouts update through a fast-forward merge only. Sync refuses
-uncommitted or untracked changes, unexpected origins, and unexpected branches.
-Shopify CLI updates also refuse to leave an untagged detached commit. The tool
-does not reset, stash, clean, or delete existing checkouts.
-
-`status` inspects local state without contacting GitHub. Matching the local
-remote-tracking branch does not prove that a checkout is current on GitHub;
-run `sync` to fetch updates. An invalid checkout or failed operation exits
-nonzero; operations stop at the first failure.
-
-These commands do not migrate or remove existing project `refs` folders.
-Shopify developer docs and Flow documentation will have their own downloader
-project.
-
-## Running from another directory
-
-```sh
-(cd /Users/mw/projects/tools && vp run references status)
-```
-
-No global installation or PATH changes are required. For direct execution
-without package-task banners:
-
-```sh
-vpx /Users/mw/projects/tools/references.ts status
-```
+All commands now use `refs.ts`; the former `references.ts`, `references.json`,
+and `src/references/` implementation have been removed. The optional reference
+argument still defaults to `effect`. Shared downloads must be named explicitly.
+Shopify developer documentation mirroring is not implemented yet.
 
 ## Development
 
 ```sh
 vp check --fix
-vp run test
 ```
 
-Integration tests use temporary local Git repositories; they do not contact
-GitHub or modify reference checkouts.
+Verify changes with formatting, lint, and type checks, then run the relevant CLI
+commands directly.
 
 - `refs.ts`: project refs executable; only runtime wiring.
 - `src/refs/command.ts`: Effect command definitions and help.
 - `src/refs/project.ts`: project setup and Effect snapshots.
-- `references.ts`: shared references executable.
-- `src/references/sources.ts`: source definitions and configuration decoding.
-- `src/references/checkouts.ts`: checkout inspection and synchronization.
-- `references.json`: Shopify CLI source release pin.
+- `src/refs/shared.ts`: Cloudflare and Shopify CLI source archive downloads.
+- `src/refs/process.ts`: scoped child-process execution.
 - `vite.config.ts`: formatting, lint, and TypeScript checks.
 
 Give future tools named entry points at the repository root, with supporting

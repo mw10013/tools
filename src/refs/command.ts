@@ -1,15 +1,24 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
+import * as Match from "effect/Match";
+import * as Option from "effect/Option";
 import * as Argument from "effect/cli/Argument";
 import * as CliError from "effect/cli/CliError";
 import * as Command from "effect/cli/Command";
 import * as Flag from "effect/cli/Flag";
 
 import * as Project from "./project.ts";
+import * as Shared from "./shared.ts";
 
 const root = Command.make("refs").pipe(
-  Command.withDescription("Manage project-local reference snapshots"),
+  Command.withDescription("Manage project and shared reference sources"),
   Command.withSharedFlags({
+    directory: Flag.String("directory").pipe(
+      Flag.withDescription(
+        "Parent directory for shared sources; defaults to tools' parent directory",
+      ),
+      Flag.optional,
+    ),
     project: Flag.Directory("project", { mustExist: true }).pipe(
       Flag.withAlias("p"),
       Flag.withDescription(
@@ -47,7 +56,11 @@ const init = Command.make(
 );
 
 const source = {
-  reference: Argument.Literals("reference", ["effect"]).pipe(
+  reference: Argument.Literals("reference", [
+    "effect",
+    "cloudflare-docs",
+    "shopify-cli",
+  ]).pipe(
     Argument.withDescription(
       "Reference to inspect or download (default: effect)",
     ),
@@ -57,19 +70,34 @@ const source = {
 const status = Command.make(
   "status",
   source,
-  Effect.fn("Refs.status")(function* () {
-    const { project } = yield* root;
-    yield* Project.status(project).pipe(Effect.flatMap(Console.log), userError);
+  Effect.fn("Refs.status")(function* ({ reference }) {
+    const { project, directory } = yield* root;
+    const sharedDirectory = Option.match(directory, {
+      onNone: () => Shared.directory,
+      onSome: Effect.succeed,
+    });
+    yield* Match.value(reference).pipe(
+      Match.when("effect", () => Project.status(project)),
+      Match.when("cloudflare-docs", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.cloudflareStatus)),
+      ),
+      Match.when("shopify-cli", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.shopifyStatus)),
+      ),
+      Match.exhaustive,
+      Effect.flatMap(Console.log),
+      userError,
+    );
   }),
 ).pipe(
-  Command.withShortDescription("Compare local source with the project pin"),
+  Command.withShortDescription("Inspect local reference sources"),
   Command.withDescription(
-    "Compare the local snapshot with the exact Effect pin in package.json. Reports missing or stale source without network access.",
+    "Inspect local sources without network access. Effect is compared with the project pin; Cloudflare docs reports directory presence. Remote freshness is not checked.",
   ),
   Command.withExamples([
     {
       command: "vpx ./refs.ts status effect",
-      description: "Inspect the shared Effect snapshot",
+      description: "Inspect the project Effect snapshot",
     },
   ]),
 );
@@ -77,19 +105,42 @@ const status = Command.make(
 const sync = Command.make(
   "sync",
   source,
-  Effect.fn("Refs.sync")(function* () {
-    const { project } = yield* root;
-    yield* Project.sync(project).pipe(Effect.flatMap(Console.log), userError);
+  Effect.fn("Refs.sync")(function* ({ reference }) {
+    const { project, directory } = yield* root;
+    const sharedDirectory = Option.match(directory, {
+      onNone: () => Shared.directory,
+      onSome: Effect.succeed,
+    });
+    yield* Match.value(reference).pipe(
+      Match.when("effect", () => Project.sync(project)),
+      Match.when("cloudflare-docs", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.cloudflareSync)),
+      ),
+      Match.when("shopify-cli", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.shopifySync)),
+      ),
+      Match.exhaustive,
+      Effect.flatMap(Console.log),
+      userError,
+    );
   }),
 ).pipe(
-  Command.withShortDescription("Download source for the project pin"),
+  Command.withShortDescription("Download or synchronize reference sources"),
   Command.withDescription(
-    "Download source for the exact Effect pin in package.json. Reuse matching snapshots and refuse conflicting worktree pins.",
+    "Effect follows the project pin. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Shopify CLI downloads source matching the installed `shopify version`.",
   ),
   Command.withExamples([
     {
       command: "vpx ./refs.ts sync effect",
       description: "Download the pinned release, or reuse a matching snapshot",
+    },
+    {
+      command: "vpx ./refs.ts sync cloudflare-docs",
+      description: "Replace shared docs with a fresh production snapshot",
+    },
+    {
+      command: "vpx ./refs.ts sync shopify-cli",
+      description: "Download source matching the installed Shopify CLI",
     },
   ]),
 );

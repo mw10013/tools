@@ -1,12 +1,10 @@
+import * as Process from "./process.ts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
-import * as ChildProcess from "effect/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 class RefError extends Schema.TaggedError<RefError>()("RefError", {
   message: Schema.String,
@@ -38,34 +36,13 @@ const decode = <A, I>(schema: Schema.Codec<A, I>, input: I, file: string) =>
     Effect.mapError(() => new RefError({ message: `Invalid ${file}` })),
   );
 
-const run = Effect.fn("Project.run")(function* (
-  directory: string,
-  executable: string,
-  args: readonly string[],
-) {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const process = yield* spawner.spawn(
-    ChildProcess.make(executable, args, {
-      cwd: directory,
-      stdin: "ignore",
-      stderr: "inherit",
-      env: { GIT_TERMINAL_PROMPT: "0" },
-      extendEnv: true,
-    }),
-  );
-  const text = yield* Stream.mkString(Stream.decodeText(process.stdout));
-  const exit = yield* process.exitCode;
-  if (exit !== 0)
-    return yield* new RefError({
-      message: `${executable} ${args[0]} failed (exit ${String(exit)})`,
-    });
-  return text.trim();
-}, Effect.scoped);
-
 const checkout = Effect.fn("Project.checkout")(function* (directory: string) {
   const path = yield* Path.Path;
-  const root = yield* run(directory, "git", ["rev-parse", "--show-toplevel"]);
-  const common = yield* run(root, "git", [
+  const root = yield* Process.run(directory, "git", [
+    "rev-parse",
+    "--show-toplevel",
+  ]);
+  const common = yield* Process.run(root, "git", [
     "rev-parse",
     "--path-format=absolute",
     "--git-common-dir",
@@ -200,7 +177,7 @@ const requireCompatibleWorktrees = Effect.fn(
 )(function* (root: string, expected: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const output = yield* run(root, "git", [
+  const output = yield* Process.run(root, "git", [
     "worktree",
     "list",
     "--porcelain",
@@ -250,7 +227,7 @@ const syncEffect = Effect.fn("Project.syncEffect")(function* (
     });
   }
   const tag = `refs/tags/effect@${project.version}`;
-  const commit = yield* run(project.root, "git", [
+  const commit = yield* Process.run(project.root, "git", [
     "ls-remote",
     "https://github.com/Effect-TS/effect.git",
     tag,
@@ -278,13 +255,13 @@ const syncEffect = Effect.fn("Project.syncEffect")(function* (
       const contents = path.join(staging, "contents");
       const backup = path.join(staging, "previous");
       yield* fs.makeDirectory(contents);
-      yield* run(project.root, "curl", [
+      yield* Process.run(project.root, "curl", [
         "-fsSL",
         `https://codeload.github.com/Effect-TS/effect/tar.gz/${commit}`,
         "-o",
         archive,
       ]);
-      yield* run(project.root, "tar", [
+      yield* Process.run(project.root, "tar", [
         "-xzf",
         archive,
         "-C",
