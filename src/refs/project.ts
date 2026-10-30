@@ -52,6 +52,16 @@ export const sources = {
     dependency: "@shopify/shopify-api",
     tag: "@shopify/shopify-api@",
   },
+  graphql: {
+    repository: "graphql/graphql-js",
+    dependency: "graphql",
+    tag: "v",
+  },
+  "graphql-yoga": {
+    repository: "graphql-hive/graphql-yoga",
+    dependency: "graphql-yoga",
+    tag: "graphql-yoga@",
+  },
 } as const;
 export type Reference = keyof typeof sources;
 

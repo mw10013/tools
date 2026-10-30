@@ -41,6 +41,8 @@ ranges are rejected.
 | `alchemy`        | `alchemy`                          |
 | `playwright`     | `@playwright/test` or `playwright` |
 | `shopify-app-js` | `@shopify/shopify-api`             |
+| `graphql`        | `graphql`                          |
+| `graphql-yoga`   | `graphql-yoga`                     |
 
 For example, `vpx ./refs.ts -p /path/to/project sync tanstack-start` downloads into
 that project's shared `refs/tanstack-start/` directory. An undeclared dependency fails
