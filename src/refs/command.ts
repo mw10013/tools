@@ -65,6 +65,7 @@ const source = {
     "t3code",
     "shopify-cli",
     "shopify-docs",
+    "m4l-docs",
     "vite-plus",
     "vite",
     "vitest",
@@ -131,6 +132,9 @@ const status = Command.make(
       ),
       Match.when("shopify-docs", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.shopifyDocsStatus)),
+      ),
+      Match.when("m4l-docs", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.m4lDocsStatus)),
       ),
       Match.exhaustive,
       Effect.flatMap(Console.log),
@@ -199,6 +203,9 @@ const sync = Command.make(
       Match.when("shopify-docs", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.shopifyDocsSync)),
       ),
+      Match.when("m4l-docs", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.m4lDocsSync)),
+      ),
       Match.exhaustive,
       Effect.flatMap(Console.log),
       userError,
@@ -207,7 +214,7 @@ const sync = Command.make(
 ).pipe(
   Command.withShortDescription("Download or synchronize reference sources"),
   Command.withDescription(
-    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Astryx, Effect, TanStack Start/Form, Better Auth, Alchemy, Playwright, and Shopify App JS follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Cloudflare CLI, Chrome DevTools, Shopify CLI, and T3 Code follow their installed versions. T3 Code reads the macOS nightly app version. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code.",
+    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Astryx, Effect, TanStack Start/Form, Better Auth, Alchemy, Playwright, and Shopify App JS follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs downloads a fresh production archive to the shared directory on every sync. Cloudflare CLI, Chrome DevTools, Shopify CLI, and T3 Code follow their installed versions. T3 Code reads the macOS nightly app version. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code. M4L docs refreshes the Max for Live guide, Live Object Model, and v8 and Node for Max APIs with local images.",
   ),
   Command.withExamples([
     {

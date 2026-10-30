@@ -6,6 +6,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as Process from "./process.ts";
+import * as M4lDocs from "./m4l-docs.ts";
 import * as ShopifyDocs from "./shopify-docs.ts";
 
 class SharedRefError extends Schema.TaggedError<SharedRefError>()(
@@ -97,6 +98,15 @@ export const shopifyDocsSync = (root: string) =>
     Effect.map(
       (destination) =>
         `shopify-docs: downloaded latest developer docs and Flow manual (${destination})`,
+    ),
+  );
+
+export const m4lDocsStatus = (root: string) => presence(root, "m4l-docs");
+export const m4lDocsSync = (root: string) =>
+  replace(root, "m4l-docs", M4lDocs.downloadInto).pipe(
+    Effect.map(
+      (destination) =>
+        `m4l-docs: downloaded Max for Live docs (${destination})`,
     ),
   );
 

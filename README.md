@@ -102,6 +102,7 @@ vpx ./refs.ts sync cloudflare-docs
 vpx ./refs.ts status cloudflare-docs
 vpx ./refs.ts sync shopify-cli
 vpx ./refs.ts sync shopify-docs
+vpx ./refs.ts sync m4l-docs
 vpx ./refs.ts sync vite-plus
 vpx ./refs.ts sync vite
 vpx ./refs.ts sync vitest
@@ -215,3 +216,12 @@ commands directly.
 Give future tools named entry points at the repository root, with supporting
 modules in `src/<tool>/` as needed. Introduce shared modules when multiple tools
 need them.
+
+M4L docs downloads the Max for Live documentation from `docs.cycling74.com` into
+`m4l-docs/`: the Max for Live user guide, the Live Object Model, the `v8` (`apiref/js`)
+and Node for Max APIs, and the `live.path`, `live.object` and `live.observer` reference
+pages. The site is server-rendered, so each page's article is converted from its HTML to
+Markdown without a browser or crawler. Links between fetched pages point at their
+Markdown files, images are saved under `_assets/`, and inline SVG diagrams are saved as
+standalone files there. No version or metadata stamp is kept; every explicit sync
+replaces the snapshot.
