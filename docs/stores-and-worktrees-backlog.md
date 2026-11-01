@@ -32,8 +32,8 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 8. Worktrees, in order:
    1. Done: `wt` (`1c9d21a`; fixes `3e61aa8` name lookup from main, berth `a138a78` release without an e2e config); the coder skill's git workflow and Shopify worktree playbook (agent-skills `a63e6d8`, `4190369`).
    2. Done: Baton PR 1, squash merged as `893b787`, its worktree removed with `wt rm`.
-   3. bang PR https://github.com/mw10013/bang/pull/1 and motio PR https://github.com/mw10013/motio/pull/1: awaiting the owner's merge. Each holds a dev and an e2e store until `wt rm`.
-   4. xnotes and notes AGENTS.md: drop main-only and `wt-NN` commit rules for the coder skill's workflow.
+   3. Done: bang PR 1 (`5de20bc`) and motio PR 1 (`fe98e28`), squash merged, worktrees removed, stores released.
+   4. xnotes PR https://github.com/mw10013/xnotes/pull/1 (deletes the parallel-agents runbook) and notes PR https://github.com/mw10013/notes/pull/1 (drops main-only rules): awaiting the owner's merge.
    5. Retire `wt-01`..`wt-04` (Baton) and motio's `wt-01` as their work lands; no rename. After pulling the stage change, their local dev data starts empty.
    6. motio: one `vp test` failure not root-caused (2026-11-01): the first run in a fresh worktree failed `test/integ/ping.test.ts` with `SchemaError: Missing key at ["backend"]`, likely Alchemy's worker-proxy 502 JSON before workerd answered; 7 reruns passed, including two from an empty `.alchemy/`. State kept at `/tmp/motio-alchemy-bak-1`.
 9. berth's sweep frees a deleted checkout's stores without `shopify app dev clean` and without checking for a live `app dev` on them.
