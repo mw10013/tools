@@ -373,7 +373,8 @@ export const pickStore = (
 /**
  * The `shopify store create dev` command that grows `pattern`'s pool by one:
  * the handle one past the highest numbered one, or the pattern's first handle
- * when it has the shape `^<prefix>\d{N}$` and the pool is empty.
+ * when it has the shape `^<prefix>\d{N}$` and the pool is empty. Every pool
+ * store is on the Basic plan, whose rate limits real merchants hit.
  */
 export const createCommand = (
   state: State,
@@ -393,7 +394,7 @@ export const createCommand = (
       : shape !== null
         ? `${shape[1]}${"0".repeat(Number(shape[2]))}`
         : "<name>";
-  return `shopify store create dev --name ${name} --organization-id ${policy.stores.organizationId} --json`;
+  return `shopify store create dev --name ${name} --organization-id ${policy.stores.organizationId} --plan basic --json`;
 };
 
 /** Exact values `--adopt` asks for, once, for migration from `.env`. */

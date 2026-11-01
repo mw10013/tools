@@ -59,7 +59,7 @@ berth list [--json]                                          # who holds what, a
 }
 ```
 
-`store` is `null` for an env without a store. A typed failure exits 1 and prints `{ "berth": 1, "error": { "_tag": "...", "message": "..." } }`. `StorePoolExhaustedError` adds `create`, the exact `shopify store create dev --name <next> --organization-id 130059740 --json` command. A usage error exits 2. Version 1 only grows. Fields are added, never renamed or removed.
+`store` is `null` for an env without a store. A typed failure exits 1 and prints `{ "berth": 1, "error": { "_tag": "...", "message": "..." } }`. `StorePoolExhaustedError` adds `create`, the exact `shopify store create dev --name <next> --organization-id 130059740 --plan basic --json` command. A usage error exits 2. Version 1 only grows. Fields are added, never renamed or removed.
 
 Machine policy is `~/.config/berth/config.json`. Every field is optional.
 

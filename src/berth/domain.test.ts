@@ -360,10 +360,10 @@ describe("stores", () => {
 
   it("names the next store to create", () => {
     expect(createCommand(pooled, /^mw10013-dev-shop-\d{2}$/u, policy)).toBe(
-      "shopify store create dev --name mw10013-dev-shop-02 --organization-id 130059740 --json",
+      "shopify store create dev --name mw10013-dev-shop-02 --organization-id 130059740 --plan basic --json",
     );
     expect(createCommand(pooled, /^mw10013-qa-shop-\d{2}$/u, policy)).toBe(
-      "shopify store create dev --name mw10013-qa-shop-00 --organization-id 130059740 --json",
+      "shopify store create dev --name mw10013-qa-shop-00 --organization-id 130059740 --plan basic --json",
     );
   });
 });
