@@ -110,7 +110,7 @@ export type Config = typeof Config.Type;
  * (3457). A config that sets `reserved` replaces the list.
  */
 export const DEFAULT_PORTS = {
-  first: 3500,
+  first: 4100,
   last: 4999,
   reserved: [3457, 6969, 7171, 9333],
 } as const;

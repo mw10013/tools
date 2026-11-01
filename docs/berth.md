@@ -67,7 +67,7 @@ Machine policy is `~/.config/berth/config.json`. Every field is optional.
 {
   "machine": "mw-mbp",
   "ports": {
-    "first": 3500,
+    "first": 4100,
     "last": 4999,
     "reserved": [3457, 6969, 7171, 9333]
   },
