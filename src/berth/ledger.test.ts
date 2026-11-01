@@ -6,6 +6,7 @@ import { NodeServices } from "@effect/platform-node";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
@@ -23,6 +24,7 @@ import { Ledger } from "./ledger.ts";
 const policy: Policy = {
   machine: MachineName.make("test-mbp"),
   ports: { first: Port.make(4000), last: Port.make(4999), reserved: new Set() },
+  stores: { organizationId: "1", pools: new Map() },
 };
 
 const web = Role.make("web");
@@ -71,6 +73,7 @@ const addLease = (port: number) => (state: State) =>
           },
           project: ProjectName.make("demo"),
           ports: { [web]: Port.make(port) },
+          store: Option.none(),
           acquiredAt: DateTime.makeUnsafe("2026-11-01T09:00:00Z"),
         },
       ],

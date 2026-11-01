@@ -18,7 +18,15 @@ import * as Argument from "effect/cli/Argument";
 import * as Command from "effect/cli/Command";
 import * as Flag from "effect/cli/Flag";
 
-import { type Adopt, type Lease, type Policy, Port, Role } from "./domain.ts";
+import {
+  type Adopt,
+  handleOf,
+  type Lease,
+  type Policy,
+  Port,
+  Role,
+  StoreDomain,
+} from "./domain.ts";
 import * as Berth from "./lease.ts";
 import { Ledger } from "./ledger.ts";
 import { findCheckout, ledgerDirectory, loadPolicy } from "./settings.ts";
@@ -31,7 +39,7 @@ interface LeaseJson {
   readonly env: string;
   readonly machine: string;
   readonly ports: Readonly<Record<string, number>>;
-  readonly store: null;
+  readonly store: { readonly domain: string; readonly config: string } | null;
   readonly acquiredAt: string;
 }
 
@@ -42,7 +50,10 @@ const toLeaseJson = (lease: Lease): LeaseJson => ({
   env: lease.key.env,
   machine: lease.key.machine,
   ports: lease.ports,
-  store: null,
+  store: Option.match(lease.store, {
+    onNone: () => null,
+    onSome: ({ domain, config }) => ({ domain, config }),
+  }),
   acquiredAt: DateTime.formatIso(lease.acquiredAt),
 });
 
@@ -89,14 +100,25 @@ const run = <
     }),
   );
 
-/** `--adopt web=3901`: each key a role, each value a port. */
+/**
+ * `--adopt web=3901 --adopt store=mw10013-dev-shop-01`: `store` takes a
+ * store's handle, every other key is a role and takes a port.
+ */
 const parseAdopt = (
   pairs: Option.Option<Record<string, string>>,
 ): Option.Option<Adopt> => {
   const ports = new Map<Role, Port>();
+  let store = Option.none<StoreDomain>();
   for (const [key, value] of Object.entries(
     Option.getOrElse(pairs, () => ({})),
   )) {
+    if (key === "store") {
+      store = Schema.decodeUnknownOption(StoreDomain)(
+        value.endsWith(".myshopify.com") ? value : `${value}.myshopify.com`,
+      );
+      if (Option.isNone(store)) return Option.none();
+      continue;
+    }
     const role = Schema.decodeUnknownOption(Role)(key);
     const port = Schema.decodeUnknownOption(Port)(
       /^\d+$/u.test(value) ? Number(value) : Number.NaN,
@@ -104,7 +126,7 @@ const parseAdopt = (
     if (Option.isNone(role) || Option.isNone(port)) return Option.none();
     ports.set(role.value, port.value);
   }
-  return Option.some({ ports });
+  return Option.some({ ports, store });
 };
 
 const acquire = Command.make(
@@ -123,7 +145,8 @@ const acquire = Command.make(
       Flag.optional,
       Flag.filterMap(
         parseAdopt,
-        () => "--adopt takes role=<port>, e.g. --adopt web=3901",
+        () =>
+          "--adopt takes role=<port> or store=<handle>, e.g. --adopt web=3901",
       ),
       Flag.withDescription(
         "Take an exact value once, for migration: --adopt web=3901",
@@ -186,18 +209,7 @@ const release = Command.make(
   ]),
 );
 
-const toTable = (holdings: ReadonlyArray<Berth.Holding>): string => {
-  const rows = [
-    ["PROJECT", "ENV", "CHECKOUT", "PORTS"],
-    ...holdings.map(({ lease, stale }) => [
-      lease.project,
-      lease.key.env,
-      `${lease.key.checkout}${stale ? " (stale)" : ""}`,
-      Object.entries(lease.ports)
-        .map(([role, port]) => `${role}=${String(port)}`)
-        .join(" "),
-    ]),
-  ];
+const toTable = (rows: ReadonlyArray<ReadonlyArray<string>>): string => {
   const widths = rows[0].map((_, column) =>
     Math.max(...rows.map((row) => row[column].length)),
   );
@@ -211,6 +223,30 @@ const toTable = (holdings: ReadonlyArray<Berth.Holding>): string => {
     .join("\n");
 };
 
+const toListText = (listing: Berth.Listing): string => {
+  const leases = toTable([
+    ["PROJECT", "ENV", "CHECKOUT", "PORTS", "STORE"],
+    ...listing.holdings.map(({ lease, stale }) => [
+      lease.project,
+      lease.key.env,
+      `${lease.key.checkout}${stale ? " (stale)" : ""}`,
+      Object.entries(lease.ports)
+        .map(([role, port]) => `${role}=${String(port)}`)
+        .join(" "),
+      Option.match(lease.store, {
+        onNone: () => "",
+        onSome: (store) => handleOf(store.domain),
+      }),
+    ]),
+  ]);
+  const held = listing.stores.filter((store) => Option.isSome(store.holder));
+  const synced = Option.match(listing.poolSyncedAt, {
+    onNone: () => "never synced",
+    onSome: (at) => `synced ${DateTime.formatIso(at)}`,
+  });
+  return `${leases}\n\nstores: ${String(listing.stores.length)} pooled, ${String(held.length)} held, ${String(listing.stores.length - held.length)} free (${synced})`;
+};
+
 const list = Command.make(
   "list",
   {
@@ -220,20 +256,36 @@ const list = Command.make(
     ),
   },
   ({ json }) =>
-    run(Berth.list, (holdings) =>
+    run(Berth.list, (listing) =>
       json
         ? printJson({
             berth: 1,
-            leases: holdings.map(({ lease, stale }) => ({
+            leases: listing.holdings.map(({ lease, stale }) => ({
               ...toLeaseJson(lease),
               stale,
             })),
+            stores: listing.stores.map(({ store, pools, holder }) => ({
+              domain: store.domain,
+              pools,
+              holder: Option.match(holder, {
+                onNone: () => null,
+                onSome: (lease) => ({
+                  project: lease.project,
+                  checkout: lease.key.checkout,
+                  env: lease.key.env,
+                }),
+              }),
+            })),
+            poolSyncedAt: Option.match(listing.poolSyncedAt, {
+              onNone: () => null,
+              onSome: DateTime.formatIso,
+            }),
           })
-        : Console.log(toTable(holdings)),
+        : Console.log(toListText(listing)),
     ),
 ).pipe(
   Command.withShortDescription(
-    "Show who holds which ports, across all projects",
+    "Show who holds which ports and stores, across all projects",
   ),
 );
 

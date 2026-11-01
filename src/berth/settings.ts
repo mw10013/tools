@@ -17,9 +17,11 @@ import {
   CheckoutPath,
   Config as BerthConfig,
   DEFAULT_PORTS,
+  DEFAULT_STORES,
   MachineName,
   Manifest,
   type Policy,
+  PoolName,
   Port,
 } from "./domain.ts";
 
@@ -129,6 +131,19 @@ export const loadPolicy = Effect.fn("Settings.loadPolicy")(function* () {
       file,
       issue: `ports.first ${String(first)} is above ports.last ${String(last)}`,
     });
+  const pools = new Map<PoolName, RegExp>();
+  for (const [pool, source] of Object.entries(
+    config.stores?.pools ?? DEFAULT_STORES.pools,
+  )) {
+    try {
+      pools.set(PoolName.make(pool), new RegExp(source, "u"));
+    } catch {
+      return yield* new SettingsInvalidError({
+        file,
+        issue: `stores.pools.${pool} is not a regular expression: ${source}`,
+      });
+    }
+  }
   return {
     machine:
       config.machine ??
@@ -140,6 +155,11 @@ export const loadPolicy = Effect.fn("Settings.loadPolicy")(function* () {
         config.ports?.reserved ??
           DEFAULT_PORTS.reserved.map((port) => Port.make(port)),
       ),
+    },
+    stores: {
+      organizationId:
+        config.stores?.organizationId ?? DEFAULT_STORES.organizationId,
+      pools,
     },
   } satisfies Policy;
 });
