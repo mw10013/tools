@@ -5,10 +5,12 @@
   "description": "CLI tools and automation",
   "type": "module",
   "imports": {
+    "#berth/*": "./src/berth/*",
     "#refs/*": "./src/refs/*",
     "#tts/*": "./src/tts/*"
   },
   "scripts": {
+    "berth": "vpx ./berth.ts",
     "prepare": "vp config",
     "refs": "vpx ./refs.ts",
     "tts": "vpx ./tts.ts"

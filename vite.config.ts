@@ -12,6 +12,7 @@ export default defineConfig(({ command, isPreview }) => {
 
   return {
     fmt: { printWidth: 80 },
+    test: { include: ["src/**/*.test.ts"] },
     lint: {
       options: { typeAware: true, typeCheck: true },
     },

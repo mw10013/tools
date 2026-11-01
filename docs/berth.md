@@ -10,8 +10,14 @@ A project commits `berth.json` at its root. It declares what each environment ne
 {
   "project": "baton",
   "envs": {
-    "dev": { "ports": ["web", "graphiql"], "store": { "pool": "dev", "config": "shopify.app.toml" } },
-    "e2e": { "ports": ["web", "graphiql"], "store": { "pool": "e2e", "config": "shopify.app.e2e.toml" } }
+    "dev": {
+      "ports": ["web", "graphiql"],
+      "store": { "pool": "dev", "config": "shopify.app.toml" }
+    },
+    "e2e": {
+      "ports": ["web", "graphiql"],
+      "store": { "pool": "e2e", "config": "shopify.app.e2e.toml" }
+    }
   }
 }
 ```
@@ -45,7 +51,10 @@ berth list [--json]                                          # who holds what, a
   "env": "dev",
   "machine": "mw-mbp",
   "ports": { "web": 3912, "graphiql": 3913 },
-  "store": { "domain": "mw10013-dev-shop-07.myshopify.com", "config": "shopify.app.toml" },
+  "store": {
+    "domain": "mw10013-dev-shop-07.myshopify.com",
+    "config": "shopify.app.toml"
+  },
   "acquiredAt": "2026-11-01T09:12:44.120Z"
 }
 ```
@@ -57,10 +66,17 @@ Machine policy is `~/.config/berth/config.json`. Every field is optional.
 ```json
 {
   "machine": "mw-mbp",
-  "ports": { "first": 3500, "last": 4999, "reserved": [3457, 6969, 7171, 9333] },
+  "ports": {
+    "first": 3500,
+    "last": 4999,
+    "reserved": [3457, 6969, 7171, 9333]
+  },
   "stores": {
     "organizationId": "130059740",
-    "pools": { "dev": "^mw10013-dev-shop-\\d{2}$", "e2e": "^mw10013-e2e-shop-\\d{2}$" }
+    "pools": {
+      "dev": "^mw10013-dev-shop-\\d{2}$",
+      "e2e": "^mw10013-e2e-shop-\\d{2}$"
+    }
   }
 }
 ```
@@ -100,6 +116,7 @@ CLI 5.0 refuses a second `shopify app dev` in one directory with the same config
 Two candidates were sketched in parallel. Both chose a committed manifest and the same three commands. The base is candidate 1, a lock-free generation ledger with pure transitions. One compare-and-swap serializes a whole-state change, so a multi-port grant is atomic and the rules test against an in-memory ledger.
 
 Grafted from candidate 2:
+
 - per-env store pools and config in the manifest;
 - `--adopt` for migration;
 - release cleans first and keeps the lease on failure.
@@ -107,6 +124,7 @@ Grafted from candidate 2:
 That replaces candidate 1's outbox of owed cleans, which needed a rule that a store with an owed clean is never granted back to its project.
 
 Rejected:
+
 - Candidate 2's claim files under a TCP-socket lock. Its lock port can be taken by any program, and a crash mid-grant leaves partial claims.
 - Candidate 1's store pick from `.shopify/dev`. `--adopt` migrates explicitly and fails loudly on the existing collision.
 - One `leases.json` behind a pid lock. Stealing a dead lock races.
