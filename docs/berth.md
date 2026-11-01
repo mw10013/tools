@@ -74,6 +74,7 @@ Machine policy is `~/.config/berth/config.json`. Every field is optional.
   "stores": {
     "organizationId": "130059740",
     "pools": {
+      "pool": "^mw10013-pool-\\d{2}$",
       "dev": "^mw10013-dev-shop-\\d{2}$",
       "e2e": "^mw10013-e2e-shop-\\d{2}$"
     }

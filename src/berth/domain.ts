@@ -123,6 +123,7 @@ export const DEFAULT_PORTS = {
 export const DEFAULT_STORES = {
   organizationId: "130059740",
   pools: {
+    pool: String.raw`^mw10013-pool-\d{2}$`,
     dev: String.raw`^mw10013-dev-shop-\d{2}$`,
     e2e: String.raw`^mw10013-e2e-shop-\d{2}$`,
   },
