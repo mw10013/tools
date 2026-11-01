@@ -23,7 +23,6 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 
 ## Open
 
-1. Commit `baton/docs/billing-runbook.md` (plan display names). Needs the owner's go (Baton AGENTS.md).
 2. berth's printed create command (`src/berth/domain.ts:396`) lacks `--plan basic`. The CLI requires `--plan` when it cannot prompt, and prompts a person to pick any plan.
 3. Check that e2e specs tolerate a store that held dev fixture data (e2e stores never had the fixture). Blocks the single pool.
 4. A provision-store command, run once per new store: Shopify CLI store auth, agent Chrome login, the app's plan for each of baton, bang and motio. Add new stores to bang's "Stores with plan access" list for its private `-test` plans (Partner Dashboard).
@@ -31,11 +30,10 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 6. Code and docs for the new pool: berth pool regexes (`docs/berth.md`), `StoreName` in each repo's `scripts/lib/worktree.ts`, Baton's fixture guard (`mw10013-dev-shop-NN` only), `scripts/lib/stores.ts` in each repo, the runbooks, AGENTS.md files.
 7. Move every checkout to the new pool; retire the old `dev-shop`/`e2e-shop` pools from berth. Never delete stores.
 8. Worktrees, in order:
-   1. `wt` in this repo (`new`, `rm`, `list`), per the proposal above. Knows only git and the two optional repo scripts.
-   2. Baton: stage names drop the checkout segment (`stageOf` in `scripts/lib/worktree.ts`, `Checkout` in `src/backend/stage.ts`, their tests); `worktree:init` accepts any branch; a `worktree:teardown` script (stop dev and e2e, `berth release`).
-   3. The rule lives in the coder skill (`agent-skills/skills/coder`, which every project's AGENTS.md loads), and the skill's description names worktrees so it is found: make and remove worktrees only with `wt`; bind a T3 thread with `existing_worktree`. Baton's AGENTS.md branch rule and the worktrees runbook change to match.
-   4. Run one real task through it end to end in Baton.
-   5. Copy to bang and motio. Retire `wt-01`..`wt-04` as their work lands; no rename.
+   1. Done: `wt` (`1c9d21a`, README `1c3764d`); the coder skill's git workflow (agent-skills `a63e6d8`).
+   2. Baton: PR https://github.com/mw10013/baton/pull/1 (stage names without the checkout segment, `worktree:init` on any branch, `worktree:teardown`, AGENTS.md and the runbook). Awaiting the owner's merge.
+   3. Copy to bang and motio; their AGENTS.md (and xnotes' and notes') drop the main-only and `wt-NN` commit rules for the coder skill's workflow.
+   4. Retire `wt-01`..`wt-04` as their work lands; no rename.
 9. berth's sweep frees a deleted checkout's stores without `shopify app dev clean` and without checking for a live `app dev` on them.
 10. Each app's prepare step per environment, written down and run by its start command. Baton: dev runs the fixture (today by hand), e2e needs none (specs tag and cancel their own orders, the e2e stage is rebuilt each run). bang and motio: not yet surveyed.
 11. Concurrent test runs across checkouts need a worker cap. Two full `vp test` runs at once on this 12-core machine timed out (22 and 6 failures; integ alone 66 s, two at once 177 s), whatever their stage names; with `--maxWorkers=3` each, both passed. Measured 2026-11-01. With many agents in many worktrees, the default worker count oversubscribes the CPU.
@@ -51,3 +49,5 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 ## Done
 
 - 2026-11-01: Baton wt-02 moved onto berth (`dev-shop-02`, `e2e-shop-02`).
+- 2026-11-01: GitHub settings for baton, bang, motio, tools, agent-skills, xnotes and notes: delete branch on merge, squash commit title and body from the PR.
+- 2026-11-01: Baton billing runbook committed and pushed (`9cbec56`).
