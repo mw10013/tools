@@ -6,13 +6,13 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 
 - **Store plan: `basic`.** Every store in the pool is a dev store on Shopify's Basic plan. Grow adds nothing these apps use; Advanced (200 points/s) and Plus (1000 points/s) only raise rate limits, which would hide the throttling real merchants on Basic and Grow hit. A store needing a Plus-only feature (checkout UI extensions, custom-app Functions) is a separate named store, outside the pool. Source: `shopify-docs/dev/docs/apps/build/apis/graphql-admin/rate-limits.md`; measured on `mw10013-dev-shop-00`: bucket 2000, restore 100/s.
 - **One pool, no dev/e2e split.** berth leases any pool store to any checkout and environment.
+- **Pool store names: `mw10013-pool-NN`**, two digits from `00`. A name states only what is permanent: the owner prefix (Shopify store names share one global namespace) and that the store is pooled. `dev` is left out because every store is a Shopify development store and it would read as the dev environment; the plan is left out because every pool store is `basic`. The rule for readers: a `pool` store is interchangeable and leased by berth, so no code or config names one; every other store is named for its one permanent purpose.
 - **Fixed stores keep their names:** `mw10013-staging-shop-00` and `mw10013-production-shop-00`. Never in the pool.
 - **First plan acceptance is not automated.** Every pool store holds a plan before use. To test a first acceptance by hand, uninstall and reinstall the app on a store. Cancelling is not used: a cancelled plan stays active until its period or trial ends.
 - **Plan display names.** Baton Dev's cards read "Basic"/"Pro" (legacy plans, legacy numbers); Baton Staging's "Baton Basic"/"Baton Pro" (measured 2026-11-01). Code reads handles only. `baton/docs/billing-runbook.md` corrected (not yet committed).
 
 ## Proposed, awaiting the owner
 
-- **Pool store names: `mw10013-pool-NN`**, two digits from `00`. See the reasoning in the conversation of 2026-11-01; the rule for readers: a `pool` store is interchangeable and leased by berth, so no code or config names one; every other store is named for its one permanent purpose.
 - **Pool size:** 20 to start.
 
 ## Open
