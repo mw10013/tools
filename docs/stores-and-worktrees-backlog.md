@@ -20,6 +20,10 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 - **Worktree support is layered, and every layer above git is opt-in per repo.** `wt` knows only git: names, create, remove, refusing unmerged work. A repo opts into more by having it: a `worktree:init` and a `worktree:teardown` package script (`wt` runs them when present, skips them when absent), and a `berth.json` for ports (any project) and stores (Shopify apps only). A local-only project like xnotes or ableton-m4l-prelive needs at most a berth.json for its dev port and an init script that runs `vp install`; a repo with neither still gets plain worktrees. Shopify, Cloudflare and Alchemy live only in the repos that use them, never in `wt`.
 - **`vp run app:open`** opens this checkout's app in the default browser: the dev lease's store and the app handle, beside the existing `app:open:staging` and `app:open:production`. `vp run browser open` stays the agent Chrome's.
 
+## Under discussion
+
+- **How work reaches main: PRs?** Facts (2026-11-01): Baton is private on GitHub Free, so branch protection is unavailable (API 403) and a PR flow is a convention, not enforced; no `.github/workflows`, so no CI runs on a PR today; all three merge methods are allowed and `deleteBranchOnMerge` is off; staging builds from `main`, production from `production` with previews disabled. Unverified: whether staging's Workers Builds trigger builds pushed non-`main` branches. Leaning: PRs with squash merge, the owner merges.
+
 ## Open
 
 1. Commit `baton/docs/billing-runbook.md` (plan display names). Needs the owner's go (Baton AGENTS.md).
@@ -32,7 +36,7 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 8. Worktrees, in order:
    1. `wt` in this repo (`new`, `rm`, `list`), per the proposal above. Knows only git and the two optional repo scripts.
    2. Baton: stage names drop the checkout segment (`stageOf` in `scripts/lib/worktree.ts`, `Checkout` in `src/backend/stage.ts`, their tests); `worktree:init` accepts any branch; a `worktree:teardown` script (stop dev and e2e, `berth release`).
-   3. One global agent rule, for every harness: make and remove worktrees only with `wt`; bind a T3 thread with `existing_worktree`. Baton's AGENTS.md branch rule and the worktrees runbook change to match.
+   3. The rule lives in the coder skill (`agent-skills/skills/coder`, which every project's AGENTS.md loads), and the skill's description names worktrees so it is found: make and remove worktrees only with `wt`; bind a T3 thread with `existing_worktree`. Baton's AGENTS.md branch rule and the worktrees runbook change to match.
    4. Run one real task through it end to end in Baton.
    5. Copy to bang and motio. Retire `wt-01`..`wt-04` as their work lands; no rename.
 9. berth's sweep frees a deleted checkout's stores without `shopify app dev clean` and without checking for a live `app dev` on them.
