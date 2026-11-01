@@ -7,13 +7,15 @@
   "imports": {
     "#berth/*": "./src/berth/*",
     "#refs/*": "./src/refs/*",
-    "#tts/*": "./src/tts/*"
+    "#tts/*": "./src/tts/*",
+    "#wt/*": "./src/wt/*"
   },
   "scripts": {
     "berth": "vpx ./berth.ts",
     "prepare": "vp config",
     "refs": "vpx ./refs.ts",
-    "tts": "vpx ./tts.ts"
+    "tts": "vpx ./tts.ts",
+    "wt": "vpx ./wt.ts"
   },
   "dependencies": {
     "@effect/platform-node": "4.0.5",
