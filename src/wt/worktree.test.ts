@@ -98,6 +98,26 @@ describe("wt new", () => {
 });
 
 describe("wt rm", () => {
+  it("finds a worktree by name from the main checkout, whatever the process's directory", async () => {
+    await create(["by-name"]);
+    const cwd = process.cwd();
+    process.chdir(repo);
+    try {
+      const removed = await runEffect(
+        Worktree.remove(repo, Option.some("by-name"), { force: false }),
+      );
+      expect(Exit.isSuccess(removed)).toBe(true);
+    } finally {
+      process.chdir(cwd);
+    }
+  }, 30_000);
+
+  it("refuses a name no worktree has", async () => {
+    expect(failureTag(await remove("nothing-here"))).toBe(
+      "WorktreeNotFoundError",
+    );
+  });
+
   it("removes a worktree with no commits beyond the base, and its branch", async () => {
     const exit = await create(["empty"]);
     const worktree = Exit.isSuccess(exit) ? exit.value.path : "";

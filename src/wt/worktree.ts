@@ -188,32 +188,36 @@ export const create = Effect.fn("Worktree.create")(function* (
   return { path: worktree, branch, base, steps } satisfies Created;
 });
 
-/** The worktree `target` names: a path, a directory name or a branch. */
+/**
+ * The worktree `target` names: a directory name or a branch, else a path,
+ * relative to `directory`, to the worktree or inside it.
+ */
 const find = Effect.fn("Worktree.find")(function* (
   repository: Git.Repository,
+  directory: string,
   target: string,
 ) {
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
-  const resolved = path.resolve(target);
-  const real = (yield* fs.exists(resolved))
-    ? yield* fs.realPath(resolved)
-    : resolved;
   const all = yield* Git.worktrees(repository);
+  const named = all.find(
+    (worktree) =>
+      !worktree.main &&
+      (path.basename(worktree.path) === target ||
+        Option.contains(worktree.branch, target)),
+  );
+  if (named !== undefined) return named;
+  const resolved = path.resolve(directory, target);
+  if (!(yield* fs.exists(resolved)))
+    return yield* new WorktreeNotFoundError({ target });
+  const real = yield* fs.realPath(resolved);
   const inside = all
     .filter(
       (worktree) =>
         real === worktree.path || real.startsWith(`${worktree.path}/`),
     )
     .sort((a, b) => b.path.length - a.path.length);
-  const match =
-    inside[0] ??
-    all.find(
-      (worktree) =>
-        path.basename(worktree.path) === target ||
-        Option.contains(worktree.branch, target),
-    );
-  return yield* Effect.fromNullishOr(match).pipe(
+  return yield* Effect.fromNullishOr(inside[0]).pipe(
     Effect.mapError(() => new WorktreeNotFoundError({ target })),
   );
 });
@@ -240,7 +244,8 @@ export const remove = Effect.fn("Worktree.remove")(function* (
   const repository = yield* Git.repositoryOf(directory);
   const worktree = yield* find(
     repository,
-    Option.getOrElse(target, () => directory),
+    directory,
+    Option.getOrElse(target, () => "."),
   );
   if (worktree.main)
     return yield* new MainCheckoutError({ path: worktree.path });
