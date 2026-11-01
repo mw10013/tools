@@ -12,6 +12,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import {
@@ -238,13 +239,17 @@ export const acquire = Effect.fn("Berth.acquire")(function* (
  *
  * It refuses while this checkout's `shopify app dev` runs on a leased store.
  * Each store's dev preview is cleaned from the checkout before its lease ends;
- * a failed clean keeps that lease and fails, so a rerun is safe.
+ * a failed clean keeps that lease and fails, so a rerun is safe. A store whose
+ * app config is absent from the checkout is freed without a clean: the config
+ * exists before any `shopify app dev` with it, so there is no preview.
  */
 export const release = Effect.fn("Berth.release")(function* (
   policy: Policy,
   checkout: Checkout,
   env: Option.Option<string>,
 ) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
   const held = (yield* (yield* Ledger).read).leases.filter(
     (lease) =>
       lease.key.machine === policy.machine &&
@@ -270,12 +275,14 @@ export const release = Effect.fn("Berth.release")(function* (
   const ended: Array<Lease> = [];
   for (const lease of held) {
     if (Option.isSome(lease.store)) {
-      yield* Shopify.clean(
-        checkout.path,
-        lease.store.value.config,
-        lease.store.value.domain,
-      );
-      yield* Console.error(`berth: cleaned ${lease.store.value.domain}`);
+      const { config, domain } = lease.store.value;
+      if (yield* fs.exists(path.join(checkout.path, config))) {
+        yield* Shopify.clean(checkout.path, config, domain);
+        yield* Console.error(`berth: cleaned ${domain}`);
+      } else
+        yield* Console.error(
+          `berth: freed ${domain} without a clean: ${config} is absent, so this checkout never ran shopify app dev with it`,
+        );
     }
     yield* modifySwept(policy, (state) =>
       Effect.succeed({ state: releaseLeases(state, [lease.key]), value: 0 }),
