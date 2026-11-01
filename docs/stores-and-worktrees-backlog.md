@@ -34,7 +34,7 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
    2. Done: Baton PR 1, squash merged as `893b787`, its worktree removed with `wt rm`.
    3. Done: bang PR 1 (`5de20bc`) and motio PR 1 (`fe98e28`), squash merged, worktrees removed, stores released.
    4. Done: xnotes PR 1 (`7e4d2a3`) and notes PR 1 (`4f1e819`), squash merged, worktrees removed.
-   5. Retire `wt-01`..`wt-04` (Baton) and motio's `wt-01` as their work lands; no rename. After pulling the stage change, their local dev data starts empty.
+   5. Done: Baton wt-01..04 and motio wt-01 removed with `wt rm` (clean, nothing beyond origin/main); motio wt-01's `tmp/` notes moved to the Trash as `motio-wt-01-tmp`.
    6. motio: one `vp test` failure not root-caused (2026-11-01): the first run in a fresh worktree failed `test/integ/ping.test.ts` with `SchemaError: Missing key at ["backend"]`, likely Alchemy's worker-proxy 502 JSON before workerd answered; 7 reruns passed, including two from an empty `.alchemy/`. State kept at `/tmp/motio-alchemy-bak-1`.
 9. berth's sweep frees a deleted checkout's stores without `shopify app dev clean` and without checking for a live `app dev` on them.
 10. Each app's prepare step per environment, written down and run by its start command. Baton: dev runs the fixture (today by hand), e2e needs none (specs tag and cancel their own orders, the e2e stage is rebuilt each run). bang and motio: not yet surveyed.
