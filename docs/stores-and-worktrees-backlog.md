@@ -23,8 +23,12 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 
 ## Open
 
-2. berth's printed create command (`src/berth/domain.ts:396`) lacks `--plan basic`. The CLI requires `--plan` when it cannot prompt, and prompts a person to pick any plan.
-3. Check that e2e specs tolerate a store that held dev fixture data (e2e stores never had the fixture). Blocks the single pool.
+3. Done (read, not run, 2026-11-01): e2e tolerates a store dev used, and dev one e2e used, in all three apps: app data lives in each stage's own local data, and specs make, scope and seed their own. What must change for one pool:
+   - Baton: `readOrders` (`scripts/lib/stores.ts:365`) reads `orders(first: 100)` unfiltered and fails past 100; e2e adds 6 orders a run, so add `status:open`. `requireFixtureStore` (`stores.ts:80`, `StoreOf("dev")`) must accept pool names. Cosmetic: fixture app-only order numbers start at #1201 (`fixture.ts:685`), which real numbers pass after ~35 e2e runs.
+   - bang: `requireTestStore` (`scripts/lib/stores.ts:85`, `StoreOf("e2e")`) must accept pool names. Each pool store needs Flow installed with `e2e-local` imported, and plan access to the private `Bang Basic Test`/`Bang Pro Test` plans (Partner Dashboard). Hardening: `shopify-admin.setup.ts:43` should fail on a duplicate `e2e-local` or another active workflow; `plan.billing.spec.ts:119` fails if the cached plan is already the target; verify-bang `features/admin.md:22` filters by `dev-shop`.
+   - motio: `scripts/stress-populator.ts` has no store guard and `reset` deletes every product; restrict it to `stress-shop-*` so pool catalogs stay small (scan spec's 90 s, bulks' 60 s). A cancelled subscription breaks `install.setup.ts`.
+   - All: `StoreName` in `scripts/lib/worktree.ts`, `berth.json` pools, README store text.
+   - berth already gives each store one holder, which the apps need: dev and e2e share one `client_id`, and `shopify app dev` points the app at the last session.
 4. A provision-store command, run once per new store: Shopify CLI store auth, agent Chrome login, the app's plan for each of baton, bang and motio. Add new stores to bang's "Stores with plan access" list for its private `-test` plans (Partner Dashboard).
 5. Create the pool stores. A taken name gets a suffix silently, so check each resulting domain.
 6. Code and docs for the new pool: berth pool regexes (`docs/berth.md`), `StoreName` in each repo's `scripts/lib/worktree.ts`, Baton's fixture guard (`mw10013-dev-shop-NN` only), `scripts/lib/stores.ts` in each repo, the runbooks, AGENTS.md files.
