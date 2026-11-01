@@ -13,7 +13,7 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 
 ## Proposed, awaiting the owner
 
-- **A pool store arrives in an unknown state; each app makes it ready.** Shopify has no store reset (deleting a store is the only one, and its name is gone for good), so a "pristine" store is not on offer. berth guarantees one holder at a time and nothing about contents. Each app declares, per environment, an idempotent prepare step that converges whatever is on the store to what that environment needs, and its tests own their data instead of assuming an empty store. A need that only a never-used store can meet (an empty-store onboarding test, say) is a separate named store, outside the pool.
+- **A pool store arrives in an unknown state; each app makes it ready.** Shopify has no store reset (deleting it is the only one, and whether its name can be reused is unknown), so a "pristine" store is not on offer. berth guarantees one holder at a time and nothing about contents. Each app declares, per environment, an idempotent prepare step that converges whatever is on the store to what that environment needs, and its tests own their data instead of assuming an empty store. A need that only a never-used store can meet (an empty-store onboarding test, say) is a separate named store, outside the pool.
 - **Pool size:** 20 to start.
 
 ## Open
