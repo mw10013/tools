@@ -198,10 +198,107 @@ With no argument, `play` chooses the newest recording under `tmp/tts/`; a number
 selects that daily sequence on the newest date containing it. A file path resolves
 relative to this checkout. `mpv --audio-device=help` lists available devices.
 
+## Ports and dev stores
+
+`berth` leases local dev ports and Shopify dev stores to each checkout and env,
+so projects and worktrees on one machine never collide. The design is in
+[docs/berth.md](docs/berth.md).
+
+### Put berth on PATH
+
+Consumers in other repos call `berth`, so create a shim at `~/.local/bin/berth`:
+
+```sh
+#!/bin/sh
+exec vpx /Users/mw/projects/tools/berth.ts "$@"
+```
+
+Make it executable with `chmod +x ~/.local/bin/berth`, and keep `~/.local/bin`
+on PATH. Inside this repository, `vp run berth` runs the same entry point,
+though `vp run` adds a task banner to stdout.
+
+### Declare what a project needs
+
+Commit a `berth.json` at the project root. Each env lists its port roles and,
+for a Shopify app, the store pool and the app config that `shopify app dev
+clean` takes:
+
+```json
+{
+  "project": "baton",
+  "envs": {
+    "dev": {
+      "ports": ["web", "graphiql"],
+      "store": { "pool": "dev", "config": "shopify.app.toml" }
+    }
+  }
+}
+```
+
+### Lease, release and list
+
+```sh
+berth acquire dev                       # print this checkout's dev lease as JSON
+berth acquire dev --bindable            # also fail if a leased port is in use
+berth acquire dev --adopt web=3901 --adopt store=mw10013-dev-shop-01
+berth release                           # clean each store's dev preview, then free
+berth list                              # every lease and the store pool
+berth list --json
+```
+
+`berth` finds the checkout by walking up from the current directory to the
+nearest `berth.json`. `acquire` returns the same lease on every run, and a
+rerun writes nothing. A typed failure exits 1 with
+`{ "berth": 1, "error": { "_tag", "message", ... } }` on stdout. A usage error
+exits 2.
+
+- `PortBusyError`: `--bindable` found a leased port in use. The lease does not
+  move. Stop the holder that `lsof -nP -iTCP:<port> -sTCP:LISTEN` names.
+- `StorePoolExhaustedError`: no store in the pool is free. Run the `create`
+  command from the error, then rerun `berth acquire`. berth never creates or
+  deletes a store.
+- `StoreCleanError`: `shopify app dev clean` failed, so the lease stays. Fix
+  the cause and rerun `berth release`.
+- `LeaseInUseError`: this checkout's `shopify app dev` runs on the store. Stop
+  it, then release.
+
+A lease whose checkout directory is gone ends at the next `acquire` or
+`release` anywhere on the machine. Its store is freed without a clean.
+
+### Machine config
+
+`$XDG_CONFIG_HOME/berth/config.json` (default `~/.config/berth/config.json`)
+sets machine policy. Every field is optional, and the defaults are:
+
+```json
+{
+  "ports": {
+    "first": 3500,
+    "last": 4999,
+    "reserved": [3457, 6969, 7171, 9333]
+  },
+  "stores": {
+    "organizationId": "130059740",
+    "pools": {
+      "dev": "^mw10013-dev-shop-\\d{2}$",
+      "e2e": "^mw10013-e2e-shop-\\d{2}$"
+    }
+  }
+}
+```
+
+`machine` defaults to the host name without `.local`. A pool pattern matches a
+store's handle, the domain without `.myshopify.com`. The patterns keep the
+staging and production stores out, because Shopify lists them as dev stores
+too. The ledger lives in `$XDG_STATE_HOME/berth/ledger/` (default
+`~/.local/state/berth/ledger/`). To try berth without touching the real
+ledger, set both variables to temporary directories.
+
 ## Development
 
 ```sh
 vp check --fix
+vp test
 ```
 
 Verify changes with formatting, lint, and type checks, then run the relevant CLI
@@ -213,7 +310,13 @@ commands directly.
 - `src/refs/shared.ts`: shared snapshot replacement and source archive downloads.
 - `src/refs/shopify-docs.ts`: developer docs, Flow manual, and local images.
 - `src/refs/process.ts`: scoped child-process execution.
-- `vite.config.ts`: formatting, lint, and TypeScript checks.
+- `berth.ts`: berth executable; only runtime wiring.
+- `src/berth/command.ts`: the CLI and its JSON contract.
+- `src/berth/lease.ts`: `acquire`, `release` and `list`.
+- `src/berth/domain.ts`: the ledger state and its pure transitions.
+- `src/berth/ledger.ts`: the generation ledger and its compare-and-swap.
+- `src/berth/shopify.ts`: Shopify CLI calls and dev session files.
+- `vite.config.ts`: formatting, lint, TypeScript checks, and the test scope.
 
 Give future tools named entry points at the repository root, with supporting
 modules in `src/<tool>/` as needed. Introduce shared modules when multiple tools
