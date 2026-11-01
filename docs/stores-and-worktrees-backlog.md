@@ -7,6 +7,7 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 - **Store plan: `basic`.** Every store in the pool is a dev store on Shopify's Basic plan. Grow adds nothing these apps use; Advanced (200 points/s) and Plus (1000 points/s) only raise rate limits, which would hide the throttling real merchants on Basic and Grow hit. A store needing a Plus-only feature (checkout UI extensions, custom-app Functions) is a separate named store, outside the pool. Source: `shopify-docs/dev/docs/apps/build/apis/graphql-admin/rate-limits.md`; measured on `mw10013-dev-shop-00`: bucket 2000, restore 100/s.
 - **One pool, no dev/e2e split.** berth leases any pool store to any checkout and environment.
 - **Pool store names: `mw10013-pool-NN`**, two digits from `00`. A name states only what is permanent: the owner prefix (Shopify store names share one global namespace) and that the store is pooled. `dev` is left out because every store is a Shopify development store and it would read as the dev environment; the plan is left out because every pool store is `basic`. The rule for readers: a `pool` store is interchangeable and leased by berth, so no code or config names one; every other store is named for its one permanent purpose.
+- **A pool store arrives in an unknown state; each app makes it ready.** Shopify has no store reset (deleting a store is the only one, and its name is gone for good), so a "pristine" store is not on offer. berth guarantees one holder at a time and nothing about contents. Each app declares, per environment, an idempotent prepare step that converges whatever is on the store to what that environment needs, and its tests own their data instead of assuming an empty store. A need that only a never-used store can meet (an empty-store onboarding test, say) is a separate named store, outside the pool.
 - **Fixed stores keep their names:** `mw10013-staging-shop-00` and `mw10013-production-shop-00`. Never in the pool.
 - **First plan acceptance is not automated.** Every pool store holds a plan before use. To test a first acceptance by hand, uninstall and reinstall the app on a store. Cancelling is not used: a cancelled plan stays active until its period or trial ends.
 - **Plan display names.** Baton Dev's cards read "Basic"/"Pro" (legacy plans, legacy numbers); Baton Staging's "Baton Basic"/"Baton Pro" (measured 2026-11-01). Code reads handles only. `baton/docs/billing-runbook.md` corrected (not yet committed).
@@ -31,7 +32,8 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
    4. AGENTS.md and runbook rules: any branch name, created in T3 with an explicit name.
    5. Copy to bang and motio.
 9. berth's sweep frees a deleted checkout's stores without `shopify app dev clean` and without checking for a live `app dev` on them.
-10. Stray stores in the org: `dev-shop-00`, `e2e-shop-00` (basic), `sandbox-shop-00/01/02`, `stress-shop-01` (advanced, used by bang). Leave unless the owner decides otherwise.
+10. Each app's prepare step per environment, written down and run by its start command. Baton: dev runs the fixture (today by hand), e2e needs none (specs tag and cancel their own orders, the e2e stage is rebuilt each run). bang and motio: not yet surveyed.
+11. Stray stores in the org: `dev-shop-00`, `e2e-shop-00` (basic), `sandbox-shop-00/01/02`, `stress-shop-01` (advanced, used by bang). Leave unless the owner decides otherwise.
 
 ## Unverified
 
