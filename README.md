@@ -330,3 +330,39 @@ Markdown without a browser or crawler. Links between fetched pages point at thei
 Markdown files, images are saved under `_assets/`, and inline SVG diagrams are saved as
 standalone files there. No version or metadata stamp is kept; every explicit sync
 replaces the snapshot.
+
+## Worktrees
+
+`wt` makes and removes git worktrees for tasks in any repository. Run it from
+any checkout of the repository.
+
+```sh
+wt new fix plan labels        # ~/.t3/worktrees/<repo>/fix-plan-labels, branch fix-plan-labels
+wt new pr 123 --exact         # fail instead of adding -2 when the name is taken
+wt new hotfix --from origin/production
+wt rm                         # the worktree you are in; or wt rm <name|path|branch>
+wt rm --force                 # discard unlanded commits; uncommitted changes still refuse
+wt list
+```
+
+`new` starts from origin's default branch after a fetch, with no upstream, so
+the first push names the branch (`git push -u origin HEAD`). With a
+`package.json` it runs `vp install --frozen-lockfile`, then the repo's
+`worktree:init` script if it has one. `rm` removes only landed work: no commits
+beyond origin's default branch, or a merged pull request whose head is the
+branch's tip, which is what a squash merge leaves. It runs the repo's
+`worktree:teardown` script if it has one and `berth release` if the checkout
+has a `berth.json`, then removes the worktree and deletes the branch. After
+`wt rm` from inside the worktree, `cd` out: the directory is gone.
+
+Each command prints one JSON document on stdout, `{ "wt": 1, ... }`, and its
+progress on stderr. A typed failure exits 1 with `{ "wt": 1, "error": { "_tag",
+"message", ... } }`; a usage error exits 2. `$WT_ROOT` moves the worktrees
+root.
+
+Put it on PATH like berth, with `~/.local/bin/wt`:
+
+```sh
+#!/bin/sh
+exec vpx /Users/mw/projects/tools/wt.ts "$@"
+```
