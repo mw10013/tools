@@ -30,10 +30,12 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 6. Code and docs for the new pool: berth pool regexes (`docs/berth.md`), `StoreName` in each repo's `scripts/lib/worktree.ts`, Baton's fixture guard (`mw10013-dev-shop-NN` only), `scripts/lib/stores.ts` in each repo, the runbooks, AGENTS.md files.
 7. Move every checkout to the new pool; retire the old `dev-shop`/`e2e-shop` pools from berth. Never delete stores.
 8. Worktrees, in order:
-   1. Done: `wt` (`1c9d21a`, README `1c3764d`); the coder skill's git workflow (agent-skills `a63e6d8`).
-   2. Baton: PR https://github.com/mw10013/baton/pull/1 (stage names without the checkout segment, `worktree:init` on any branch, `worktree:teardown`, AGENTS.md and the runbook). Awaiting the owner's merge.
-   3. Copy to bang and motio; their AGENTS.md (and xnotes' and notes') drop the main-only and `wt-NN` commit rules for the coder skill's workflow.
-   4. Retire `wt-01`..`wt-04` as their work lands; no rename.
+   1. Done: `wt` (`1c9d21a`; fixes `3e61aa8` name lookup from main, berth `a138a78` release without an e2e config); the coder skill's git workflow and Shopify worktree playbook (agent-skills `a63e6d8`, `4190369`).
+   2. Done: Baton PR 1, squash merged as `893b787`, its worktree removed with `wt rm`.
+   3. bang PR https://github.com/mw10013/bang/pull/1 and motio PR https://github.com/mw10013/motio/pull/1: awaiting the owner's merge. Each holds a dev and an e2e store until `wt rm`.
+   4. xnotes and notes AGENTS.md: drop main-only and `wt-NN` commit rules for the coder skill's workflow.
+   5. Retire `wt-01`..`wt-04` (Baton) and motio's `wt-01` as their work lands; no rename. After pulling the stage change, their local dev data starts empty.
+   6. motio: one `vp test` failure not root-caused (2026-11-01): the first run in a fresh worktree failed `test/integ/ping.test.ts` with `SchemaError: Missing key at ["backend"]`, likely Alchemy's worker-proxy 502 JSON before workerd answered; 7 reruns passed, including two from an empty `.alchemy/`. State kept at `/tmp/motio-alchemy-bak-1`.
 9. berth's sweep frees a deleted checkout's stores without `shopify app dev clean` and without checking for a live `app dev` on them.
 10. Each app's prepare step per environment, written down and run by its start command. Baton: dev runs the fixture (today by hand), e2e needs none (specs tag and cancel their own orders, the e2e stage is rebuilt each run). bang and motio: not yet surveyed.
 11. Concurrent test runs across checkouts need a worker cap. Two full `vp test` runs at once on this 12-core machine timed out (22 and 6 failures; integ alone 66 s, two at once 177 s), whatever their stage names; with `--maxWorkers=3` each, both passed. Measured 2026-11-01. With many agents in many worktrees, the default worker count oversubscribes the CPU.
