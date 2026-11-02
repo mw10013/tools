@@ -38,7 +38,7 @@ berth list [--json]                                          # who holds what, a
 
 - `acquire` is idempotent. The same checkout and env always get the same lease. When the manifest changes, `acquire` adds ports for new roles, frees ports for removed roles, and adds or drops the store.
 - `--bindable` means the caller is about to bind the ports. It fails with `PortBusyError` unless every leased port binds right now. A leased port never moves.
-- `--adopt web=3901 --adopt store=mw10013-dev-shop-01` takes exact values once, for migration from `.env`. It fails if another lease holds a value.
+- `--adopt web=3901 --adopt store=mw10013-pool-01` takes exact values once, for migration from `.env`. It fails if another lease holds a value.
 - `release` runs `shopify app dev clean --config <config> --store <domain>` from the checkout first. If the clean fails, the lease stays and `release` exits nonzero, so running it again is safe. It refuses while this checkout's `shopify app dev` runs on the store, read from `.shopify/dev/app-dev-*.json`. A store whose config file is absent from the checkout is freed without a clean, since no `shopify app dev` ran there with it.
 
 `acquire` prints only this on stdout. Human lines go to stderr.
@@ -52,7 +52,7 @@ berth list [--json]                                          # who holds what, a
   "machine": "mw-mbp",
   "ports": { "web": 3912, "graphiql": 3913 },
   "store": {
-    "domain": "mw10013-dev-shop-07.myshopify.com",
+    "domain": "mw10013-pool-07.myshopify.com",
     "config": "shopify.app.toml"
   },
   "acquiredAt": "2026-11-01T09:12:44.120Z"
@@ -74,9 +74,7 @@ Machine policy is `~/.config/berth/config.json`. Every field is optional.
   "stores": {
     "organizationId": "130059740",
     "pools": {
-      "pool": "^mw10013-pool-\\d{2}$",
-      "dev": "^mw10013-dev-shop-\\d{2}$",
-      "e2e": "^mw10013-e2e-shop-\\d{2}$"
+      "pool": "^mw10013-pool-\\d{2}$"
     }
   }
 }

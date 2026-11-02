@@ -101,7 +101,7 @@ const run = <
   );
 
 /**
- * `--adopt web=3901 --adopt store=mw10013-dev-shop-01`: `store` takes a
+ * `--adopt web=3901 --adopt store=mw10013-pool-01`: `store` takes a
  * store's handle, every other key is a role and takes a port.
  */
 const parseAdopt = (

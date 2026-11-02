@@ -240,7 +240,7 @@ clean` takes:
 ```sh
 berth acquire dev                       # print this checkout's dev lease as JSON
 berth acquire dev --bindable            # also fail if a leased port is in use
-berth acquire dev --adopt web=3901 --adopt store=mw10013-dev-shop-01
+berth acquire dev --adopt web=3901 --adopt store=mw10013-pool-01
 berth release                           # clean each store's dev preview, then free
 berth list                              # every lease and the store pool
 berth list --json
@@ -280,8 +280,7 @@ sets machine policy. Every field is optional, and the defaults are:
   "stores": {
     "organizationId": "130059740",
     "pools": {
-      "dev": "^mw10013-dev-shop-\\d{2}$",
-      "e2e": "^mw10013-e2e-shop-\\d{2}$"
+      "pool": "^mw10013-pool-\\d{2}$"
     }
   }
 }
