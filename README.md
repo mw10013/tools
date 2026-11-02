@@ -276,7 +276,7 @@ sets machine policy. Every field is optional, and the defaults are:
 ```json
 {
   "ports": {
-    "first": 4100,
+    "first": 4000,
     "last": 4999,
     "reserved": [3457, 6969, 7171, 9333]
   },
