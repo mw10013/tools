@@ -1,0 +1,98 @@
+[18:11:55.609] INFO (#114): Scan.startScan: shop=scan-complete.myshopify.com status=started workflowId=b560d95c-9e7e-4eef-a770-e721e2a807f2
+shop: scan-complete.myshopify.com
+status: started
+workflowId: b560d95c-9e7e-4eef-a770-e721e2a807f2
+[18:11:55.616] INFO (#123): ScanWorkflow.run: shop=scan-complete.myshopify.com workflowId=b560d95c-9e7e-4eef-a770-e721e2a807f2 status=started
+shop: scan-complete.myshopify.com
+workflowId: b560d95c-9e7e-4eef-a770-e721e2a807f2
+status: started
+[18:11:55.639] INFO (#197): Scan.startScan: shop=scan-complete.myshopify.com status=in-flight
+shop: scan-complete.myshopify.com
+status: in-flight
+[18:11:55.642] INFO (#208): AdminAuth.login: status=signed-in
+status: signed-in
+ip: unknown
+[18:12:00.639] INFO (#945): Scan.onScanStream: shop=scan-complete.myshopify.com workflowId=b560d95c-9e7e-4eef-a770-e721e2a807f2 productsScanned=2 variantsScanned=0 productsWithIssues=1 variantsWithIssues=0 ended=true
+shop: scan-complete.myshopify.com
+workflowId: b560d95c-9e7e-4eef-a770-e721e2a807f2
+productsScanned: 2
+variantsScanned: 0
+productsWithIssues: 1
+variantsWithIssues: 0
+ended: true
+[18:12:00.640] INFO (#123): ScanWorkflow.run: shop=scan-complete.myshopify.com workflowId=b560d95c-9e7e-4eef-a770-e721e2a807f2 status=complete objectCount=6
+shop: scan-complete.myshopify.com
+workflowId: b560d95c-9e7e-4eef-a770-e721e2a807f2
+status: complete
+objectCount: 6
+[18:12:00.878] INFO (#1114): Scan.startScan: shop=scan-notices.myshopify.com status=started workflowId=f3e1efcd-b088-4a3f-a60e-a654313c4d3d
+shop: scan-notices.myshopify.com
+status: started
+workflowId: f3e1efcd-b088-4a3f-a60e-a654313c4d3d
+[18:12:00.881] INFO (#1122): ScanWorkflow.run: shop=scan-notices.myshopify.com workflowId=f3e1efcd-b088-4a3f-a60e-a654313c4d3d status=started
+shop: scan-notices.myshopify.com
+workflowId: f3e1efcd-b088-4a3f-a60e-a654313c4d3d
+status: started
+[18:12:05.904] INFO (#1841): Scan.onScanStream: shop=scan-notices.myshopify.com workflowId=f3e1efcd-b088-4a3f-a60e-a654313c4d3d productsScanned=2 variantsScanned=0 productsWithIssues=1 variantsWithIssues=0 ended=true
+shop: scan-notices.myshopify.com
+workflowId: f3e1efcd-b088-4a3f-a60e-a654313c4d3d
+productsScanned: 2
+variantsScanned: 0
+productsWithIssues: 1
+variantsWithIssues: 0
+ended: true
+[18:12:05.904] INFO (#1122): ScanWorkflow.run: shop=scan-notices.myshopify.com workflowId=f3e1efcd-b088-4a3f-a60e-a654313c4d3d status=complete objectCount=6
+shop: scan-notices.myshopify.com
+workflowId: f3e1efcd-b088-4a3f-a60e-a654313c4d3d
+status: complete
+objectCount: 6
+[18:12:06.048] INFO (#1958): Scan.startScan: shop=scan-stale.myshopify.com status=started workflowId=28c89705-51d9-48fb-a014-2ba9b2463456
+shop: scan-stale.myshopify.com
+status: started
+workflowId: 28c89705-51d9-48fb-a014-2ba9b2463456
+[18:12:06.050] INFO (#1966): ScanWorkflow.run: shop=scan-stale.myshopify.com workflowId=28c89705-51d9-48fb-a014-2ba9b2463456 status=started
+shop: scan-stale.myshopify.com
+workflowId: 28c89705-51d9-48fb-a014-2ba9b2463456
+status: started
+[18:12:06.055] ERROR (#1966): ScanWorkflow.run: shop=scan-stale.myshopify.com workflowId=28c89705-51d9-48fb-a014-2ba9b2463456 status=failed
+ScanWorkflowError: Step failed: run-bulk-products-query
+    at ScanWorkflow.run (file:///bundle/backend.js:44:35280)
+    at ScanWorkflow.run (definition) (file:///bundle/backend.js:450:593) {
+  [cause]: NonRetryableError: [alchemy-workflow-terminal:v1]Run bulk products query failed: refused
+}
+shop: scan-stale.myshopify.com
+workflowId: 28c89705-51d9-48fb-a014-2ba9b2463456
+status: failed
+message: Step failed: run-bulk-products-query
+[18:12:06.057] ERROR (#1975): Scan.onScanError: shop=scan-stale.myshopify.com workflowId=28c89705-51d9-48fb-a014-2ba9b2463456 tracked=true
+shop: scan-stale.myshopify.com
+workflowId: 28c89705-51d9-48fb-a014-2ba9b2463456
+tracked: true
+message: Step failed: run-bulk-products-query
+[18:12:06.069] INFO (#2064): AdminAuth.login: status=signed-in
+status: signed-in
+ip: unknown
+[18:12:06.080] WARN (#2131): Scan.startScan: shop=scan-stale.myshopify.com workflowId=wf-dead: in-flight record stale, retired
+shop: scan-stale.myshopify.com
+workflowId: wf-dead
+[18:12:06.080] INFO (#2131): Scan.startScan: shop=scan-stale.myshopify.com status=started workflowId=43d9a7dc-1457-4813-adc6-8791e90246e7
+shop: scan-stale.myshopify.com
+status: started
+workflowId: 43d9a7dc-1457-4813-adc6-8791e90246e7
+[18:12:06.082] INFO (#2139): ScanWorkflow.run: shop=scan-stale.myshopify.com workflowId=43d9a7dc-1457-4813-adc6-8791e90246e7 status=started
+shop: scan-stale.myshopify.com
+workflowId: 43d9a7dc-1457-4813-adc6-8791e90246e7
+status: started
+[18:12:11.103] INFO (#2893): Scan.onScanStream: shop=scan-stale.myshopify.com workflowId=43d9a7dc-1457-4813-adc6-8791e90246e7 productsScanned=2 variantsScanned=0 productsWithIssues=1 variantsWithIssues=0 ended=true
+shop: scan-stale.myshopify.com
+workflowId: 43d9a7dc-1457-4813-adc6-8791e90246e7
+productsScanned: 2
+variantsScanned: 0
+productsWithIssues: 1
+variantsWithIssues: 0
+ended: true
+[18:12:11.103] INFO (#2139): ScanWorkflow.run: shop=scan-stale.myshopify.com workflowId=43d9a7dc-1457-4813-adc6-8791e90246e7 status=complete objectCount=6
+shop: scan-stale.myshopify.com
+workflowId: 43d9a7dc-1457-4813-adc6-8791e90246e7
+status: complete
+objectCount: 6

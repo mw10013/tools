@@ -1,0 +1,47 @@
+$ vp exec playwright test --project=e2e ⊘ cache disabled
+
+Running 25 tests using 1 worker
+
+e2e preflight: https://players-bearing-affiliated-shadow.trycloudflare.com ready in 0.4s
+  ✓   1 [preflight] › test/e2e/preflight.setup.ts:24:1 › e2e server and tunnel (496ms)
+  ✘   2 [shopify-admin] › test/e2e/shopify-admin.setup.ts:21:1 › shopify admin auth (20.2s)
+  -   3 [shopify-admin] › test/e2e/shopify-admin.setup.ts:41:1 › e2e-local is on in Flow
+
+
+  1) [shopify-admin] › test/e2e/shopify-admin.setup.ts:21:1 › shopify admin auth ───────────────────
+
+    AgentChromeError: The Shopify admin did not finish loading in the agent Chrome within 20 seconds (https://admin.shopify.com/store/mw10013-pool-11).
+
+       at ../../scripts/lib/agent-chrome.ts:322
+
+      320 |     );
+      321 |     if (Option.exists(landed, loggedIn)) return;
+    > 322 |     return yield* new AgentChromeError({
+          |                   ^
+      323 |       message: Option.exists(landed, loggedOut)
+      324 |         ? "The agent Chrome is not logged in to Shopify. A person runs vp run browser login and logs in at the window it opens."
+      325 |         : `The Shopify admin did not finish loading in the agent Chrome within 20 seconds (${Option.match(landed, { onNone: () => "tab gone", onSome: (target) => target.url })}).`,
+        at /Users/mw/.t3/worktrees/bang/dev-prepares-leased-store/scripts/lib/agent-chrome.ts:322:19
+        at IteratorImpl.~effect/Effect/successCont (/Users/mw/.t3/worktrees/bang/dev-prepares-leased-store/node_modules/.pnpm/effect@4.0.1/node_modules/effect/src/internal/effect.ts:1417:28)
+        at ExitPrimitive.~effect/Effect/evaluate (/Users/mw/.t3/worktrees/bang/dev-prepares-leased-store/node_modules/.pnpm/effect@4.0.1/node_modules/effect/src/internal/core.ts:565:30)
+        at FiberImpl.runLoop (/Users/mw/.t3/worktrees/bang/dev-prepares-leased-store/node_modules/.pnpm/effect@4.0.1/node_modules/effect/src/internal/effect.ts:650:39)
+        at FiberImpl.evaluate (/Users/mw/.t3/worktrees/bang/dev-prepares-leased-store/node_modules/.pnpm/effect@4.0.1/node_modules/effect/src/internal/effect.ts:592:23)
+        at FiberImpl.evaluate (/Users/mw/.t3/worktrees/bang/dev-prepares-leased-store/node_modules/.pnpm/effect@4.0.1/node_modules/effect/src/internal/effect.ts:586:27)
+        at /Users/mw/.t3/worktrees/bang/dev-prepares-leased-store/node_modules/.pnpm/effect@4.0.1/node_modules/effect/src/internal/effect.ts:1154:17
+        at /Users/mw/.t3/worktrees/bang/dev-prepares-leased-store/node_modules/.pnpm/effect@4.0.1/node_modules/effect/src/internal/effect.ts:1116:16
+
+    Error Context: playwright/test-results/shopify-admin.setup.ts-shopify-admin-auth-shopify-admin/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    playwright/test-results/shopify-admin.setup.ts-shopify-admin-auth-shopify-admin/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace playwright/test-results/shopify-admin.setup.ts-shopify-admin-auth-shopify-admin/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [shopify-admin] › test/e2e/shopify-admin.setup.ts:21:1 › shopify admin auth ────────────────────
+  23 did not run
+  1 passed (23.2s)
+

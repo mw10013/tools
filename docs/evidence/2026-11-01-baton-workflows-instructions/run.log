@@ -1,0 +1,129 @@
+$ vp exec playwright test ⊘ cache disabled
+e2e preflight: https://detail-herbal-spoken-syndicate.trycloudflare.com ready in 0.2s, mw10013-pool-07.myshopify.com has store auth
+
+Running 85 tests using 6 workers
+
+Wrote 13 cookies to playwright/.auth/shopify-admin.json
+  ✓   1 [shopify-admin] › test/e2e/shopify-admin.setup.ts:13:1 › shopify admin auth (1.2s)
+  ✓   2 [install] › test/e2e/install.setup.ts:19:1 › install the app and load the e2e fixture (6.1s)
+  ✓   3 [setup] › test/e2e/auth.setup.ts:8:3 › sign in admin (2.0s)
+  ✓   4 [setup] › test/e2e/auth.setup.ts:8:3 › sign in member (2.1s)
+  ✓   8 [chromium] › test/e2e/actor-upgrade.spec.ts:41:1 › an upgrade from another site is refused, and the same one from this site opens (141ms)
+  ✓  10 [chromium] › test/e2e/help.spec.ts:12:1 › the hub lists every section (1.3s)
+  ✓   7 [chromium] › test/e2e/admin.spec.ts:56:1 › a shop with no stored session shows the No session banner (1.4s)
+  ✓   5 [chromium] › test/e2e/admin.spec.ts:14:1 › the dashboard names the consoles and links to each (1.6s)
+  ✓  12 [chromium] › test/e2e/help.spec.ts:52:1 › an unknown page is not found (1.1s)
+  ✓  13 [chromium] › test/e2e/help.spec.ts:58:1 › the landing page links to help (1.2s)
+  ✓  16 [chromium] › test/e2e/http.spec.ts:13:3 › signed out › a signed-out request to the member area redirects to sign-in (76ms)
+  ✓  17 [chromium] › test/e2e/http.spec.ts:18:3 › signed out › an anonymous visitor is bounced from /admin to /sign-in (144ms)
+  ✓  14 [chromium] › test/e2e/help.spec.ts:63:1 › the sign-in page links to Signing in (1.2s)
+  ✓  18 [chromium] › test/e2e/http.spec.ts:23:3 › signed out › an anonymous visitor is bounced from /admin/shops to /sign-in (151ms)
+  ✓  19 [chromium] › test/e2e/http.spec.ts:32:3 › as a member › a member of one shop is sent past Your stores to its workflows list (111ms)
+  ✓  20 [chromium] › test/e2e/http.spec.ts:39:3 › as a member › a signed-in member's request to their shop returns HTML (58ms)
+  ✓  21 [chromium] › test/e2e/http.spec.ts:44:3 › as a member › a member's request to the admin area is sent to the member area (35ms)
+  ✓  22 [chromium] › test/e2e/http.spec.ts:49:3 › as a member › the auth proxy serves only verify and sign-out: get-session is not found (22ms)
+  ✓   9 [chromium] › test/e2e/actor-upgrade.spec.ts:57:1 › a visitor who is not a member sees the not-a-member page, and the gate closes its socket with 4404 (3.4s)
+  ✓   6 [chromium] › test/e2e/admin.spec.ts:32:1 › shops lists installed shops, filters by domain, and drills into one (3.4s)
+  ✓  26 [chromium] › test/e2e/members.spec.ts:10:1 › the admin sees the e2e fixture's members with their shop (1.3s)
+  ✓  27 [chromium] › test/e2e/members.spec.ts:32:1 › a member added to the shop is listed (1.1s)
+  ✓  24 [chromium] › test/e2e/member-workflows.spec.ts:34:1 › a member on two teams picks between those two alone (3.5s)
+  ✓  28 [chromium] › test/e2e/shell.spec.ts:8:3 › as a member › the admin side sends a member of one shop to its workflows list (1.7s)
+  ✓  25 [chromium] › test/e2e/member-workflows.spec.ts:47:1 › a member starts and finishes a task on the workflow page (4.5s)
+  ✓  29 [chromium] › test/e2e/shell.spec.ts:16:3 › as a member › a member of one shop sees nothing about shops (1.1s)
+  ✓  11 [chromium] › test/e2e/help.spec.ts:21:1 › a section hub lists its pages and a page's foot lists its siblings (8.2s)
+  ✓  30 [chromium] › test/e2e/shell.spec.ts:27:3 › signed out › the member side sends to sign-in and back (1.3s)
+  ✓  23 [chromium] › test/e2e/member-workflows.spec.ts:18:1 › a member sees the teams they are on, and only those (6.2s)
+  ✓  31 [chromium] › test/e2e/shell.spec.ts:38:3 › as an admin › sign out ends the session (2.0s)
+  ✓  36 [chromium] › test/e2e/sign-in.spec.ts:6:1 › a member signs in with the link the page shows (2.0s)
+  ✓  34 [chromium] › test/e2e/shop.spec.ts:73:1 › a member removed while the page is open is told so (3.7s)
+  ✓  37 [chromium] › test/e2e/sign-in.spec.ts:20:1 › a non-member gets the same confirmation and no link (987ms)
+  ✓  33 [chromium] › test/e2e/shop.spec.ts:46:1 › sign-out in one window sends the other to sign-in; an admin is untouched (5.9s)
+  ✓  32 [chromium] › test/e2e/shop.spec.ts:24:1 › a Done in one window shows in the other window's workflows list (7.6s)
+  ✓  15 [chromium] › test/e2e/help.spec.ts:77:1 › each page with a body renders it and its pictures load (16.6s)
+  ✓  38 [embedded] › test/e2e/embedded/app.spec.ts:20:1 › the app loads embedded and shows the e2e store's domain (42ms)
+  ✓  42 [embedded] › test/e2e/embedded/app.spec.ts:25:1 › the exchange stored a real session (46ms)
+  ✓  43 [embedded] › test/e2e/embedded/app.spec.ts:32:1 › the Orders link opens the orders screen inside the admin (1.0s)
+  ✓  35 [chromium] › test/e2e/shop.spec.ts:88:1 › a third window displaces the oldest, and Reconnect there takes it back (14.7s)
+  ✓  41 [embedded] › test/e2e/embedded/order-page.spec.ts:58:1 › the merchant marks a task done, reopens it, and blocks the run (3.0s)
+  ✓  39 [embedded] › test/e2e/embedded/home.spec.ts:32:1 › the App Home guide marks a team with a member and an active workflow done (8.8s)
+  ✓  45 [embedded] › test/e2e/embedded/order-page.spec.ts:119:1 › the merchant puts back a task a member started (1.2s)
+  ✓  47 [embedded] › test/e2e/embedded/order-page.spec.ts:155:1 › the merchant cannot reopen a task whose next step is done (841ms)
+  ✓  46 [embedded] › test/e2e/embedded/home.spec.ts:94:1 › the strip shows five cells with the orders index's labels (2.6s)
+  ✓  48 [embedded] › test/e2e/embedded/order-page.spec.ts:193:1 › the merchant blocks a run with a reason, notes the run, and unblocks it (1.8s)
+  ✓  50 [embedded] › test/e2e/embedded/order-page.spec.ts:258:1 › the order card puts the run's badges on the title line, Manage above its drawer, and cuts a long reason (1.1s)
+  ✓  44 [embedded] › test/e2e/embedded/orders-pages.spec.ts:61:1 › Next page shows the orders past the first 25, the fixture's cancelled order among them (338ms)
+  ✓  49 [embedded] › test/e2e/embedded/home.spec.ts:106:1 › a strip cell opens the orders index with that value chosen (3.4s)
+  ✓  51 [embedded] › test/e2e/embedded/order-page.spec.ts:345:1 › an item matching two workflows waits for the merchant to choose, then changes (3.2s)
+  ✓  52 [embedded] › test/e2e/embedded/orders-pages.spec.ts:70:1 › a notice on the second page refetches the second page (2.9s)
+  ✓  53 [embedded] › test/e2e/embedded/home.spec.ts:114:1 › home renders a capacity meter per dimension (2.6s)
+  ✓  40 [embedded] › test/e2e/embedded/members.spec.ts:49:1 › the members index adds a member and the member page adds it to teams, removes it, and deletes it (15.4s)
+  ✓  54 [embedded] › test/e2e/embedded/order-page.spec.ts:470:1 › each order-page state draws the controls its action set allows (5.1s)
+  ✓  56 [embedded] › test/e2e/embedded/socket.spec.ts:16:1 › Orders, the App Home and Orders again share one socket (10.2s)
+  ✓  57 [embedded] › test/e2e/embedded/members.spec.ts:127:1 › a 254-character email is added and printed whole, and 255 is refused on Add (8.1s)
+  ✓  55 [embedded] › test/e2e/embedded/orders.spec.ts:72:1 › the orders screen shows an order Shopify sends by webhook (10.9s)
+  ✓  61 [embedded] › test/e2e/embedded/orders.spec.ts:86:1 › the orders index links each order to Shopify (871ms)
+  ✓  60 [embedded] › test/e2e/embedded/members.spec.ts:163:1 › adding a member past the included seats succeeds and the home tile says it is billed (7.8s)
+  ✓  58 [embedded] › test/e2e/embedded/teams.spec.ts:58:1 › teams screen creates, adds members to, renames, and deletes a team (8.6s)
+  ✓  62 [embedded] › test/e2e/embedded/orders.spec.ts:105:1 › orders screen syncs open orders and lists them (4.0s)
+  ✓  59 [embedded] › test/e2e/embedded/workflows.spec.ts:99:1 › creating a workflow with a taken tag is refused under the field and names the holder (8.1s)
+  ✓  63 [embedded] › test/e2e/embedded/teams.spec.ts:144:1 › the team page pages its members (4.5s)
+  ✓  65 [embedded] › test/e2e/embedded/workflows.spec.ts:135:1 › duplicate asks for a name and a tag, and the new workflow is inactive with the given tag (7.4s)
+  ✓  66 [embedded] › test/e2e/embedded/workflows.spec.ts:175:1 › editing the tag from the detail page writes immediately and starts no draft (3.7s)
+  ✓  67 [embedded] › test/e2e/embedded/workflows.spec.ts:215:1 › the workflows index keeps its filter across the workflow page (3.4s)
+  ✓  64 [embedded] › test/e2e/embedded/orders.spec.ts:129:1 › Sync open orders brings back an open order the screen no longer lists (16.0s)
+  ✓  68 [embedded] › test/e2e/embedded/workflows.spec.ts:253:1 › the workflow page raises Needs a team as its one banner and marks an empty team's step No members (3.2s)
+  ✓  70 [embedded] › test/e2e/embedded/workflows.spec.ts:294:1 › the workflows index searches by name and clears back to the list (3.4s)
+  ✓  69 [embedded] › test/e2e/embedded/orders.spec.ts:158:1 › a cancelled order shows Cancelled (8.2s)
+  ✓  72 [embedded] › test/e2e/embedded/orders.spec.ts:186:1 › the orders index searches by order number and clears back to the list (5.5s)
+  ✓  73 [embedded] › test/e2e/embedded/orders.spec.ts:285:1 › each count is what choosing it shows, given the team (1.6s)
+  ✓  74 [embedded] › test/e2e/embedded/orders.spec.ts:353:1 › the counts at the top and the Show menu hold one value (894ms)
+  ✓  71 [embedded] › test/e2e/embedded/workflows.spec.ts:335:1 › a fresh workflow turns on from the editor, then edits go through the draft (14.5s)
+  ✓  75 [embedded] › test/e2e/embedded/orders.spec.ts:425:1 › the orders index keeps its filters and page across the order page (4.3s)
+  ✓  77 [embedded] › test/e2e/embedded/orders.spec.ts:500:1 › a filter change resets the page and replaces history (2.2s)
+  ✓  78 [embedded] › test/e2e/embedded/orders.spec.ts:539:1 › a bad filter value reads as no filter (2.9s)
+  ✓  79 [embedded] › test/e2e/embedded/orders.spec.ts:577:1 › every issue kind counts in the Issues filter and its badge is critical (2.2s)
+  ✓  76 [embedded] › test/e2e/embedded/workflows.spec.ts:477:1 › another tab's edits and Discard reach an open editor without a press (13.1s)
+  ✘  80 [embedded] › test/e2e/embedded/workflows.spec.ts:534:1 › the editor counts instructions down from 300 and refuses 501 on save (13.1s)
+
+
+  1) [embedded] › test/e2e/embedded/workflows.spec.ts:534:1 › the editor counts instructions down from 300 and refuses 501 on save 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('iframe[src*="embedded=1"]:not([src*="chrome=window"])').contentFrame().locator('s-page[heading="E2E Ring 31b437a80"]')
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" locator('iframe[src*="embedded=1"]:not([src*="chrome=window"])').contentFrame().locator('s-page[heading="E2E Ring 31b437a80"]') with timeout 10000ms
+      - waiting for locator('iframe[src*="embedded=1"]:not([src*="chrome=window"])').contentFrame().locator('s-page[heading="E2E Ring 31b437a80"]')
+
+
+      94 |   await searchWorkflows(q);
+      95 |   await frame.getByRole("link", { name, exact: true }).click();
+    > 96 |   await expect(frame.locator(`s-page[heading="${name}"]`)).toBeVisible();
+         |                                                            ^
+      97 | };
+      98 |
+      99 | test("creating a workflow with a taken tag is refused under the field and names the holder", async ({
+        at openWorkflow (/Users/mw/.t3/worktrees/baton/dev-prepares-leased-store/test/e2e/embedded/workflows.spec.ts:96:60)
+        at /Users/mw/.t3/worktrees/baton/dev-prepares-leased-store/test/e2e/embedded/workflows.spec.ts:547:3
+
+    Error Context: playwright/test-results/embedded-workflows-the-edi-480db-300-and-refuses-501-on-save-embedded/error-context.md
+
+    Error Context: playwright/test-results/embedded-workflows-the-edi-480db-300-and-refuses-501-on-save-embedded/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    playwright/test-results/embedded-workflows-the-edi-480db-300-and-refuses-501-on-save-embedded/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace playwright/test-results/embedded-workflows-the-edi-480db-300-and-refuses-501-on-save-embedded/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [embedded] › test/e2e/embedded/workflows.spec.ts:534:1 › the editor counts instructions down from 300 and refuses 501 on save 
+  5 did not run
+  79 passed (2.4m)
+

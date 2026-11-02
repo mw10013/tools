@@ -1,0 +1,67 @@
+[18:15:02.139] INFO (#109): ShopActor.updateSettings: shop=seed-shop.myshopify.com status=updated
+shop: seed-shop.myshopify.com
+status: updated
+[18:15:02.170] INFO (#191): ShopActor.activate: shop=never-installed.myshopify.com: no AppInstallation, not created
+shop: never-installed.myshopify.com
+[18:15:02.171] ERROR (#189): HTTP handler failed
+RpcCallError: RPC call to "getSettings" failed: ShopActor.activate: no AppInstallation, not created
+    at catch (file:///bundle/backend.js:4:1254)
+    at file:///bundle/Schema-Dxa1JKq9.js:13:6363
+    at ShopActors.getSettings (file:///bundle/backend.js:546:14165)
+    at ShopActors.getSettings (definition) (file:///bundle/backend.js:449:2445)
+    at TestBackend.door (file:///bundle/backend.js:546:15045)
+    at TestBackend.door (definition) (file:///bundle/backend.js:546:13721) {
+  [cause]: Error: ShopActor.activate: no AppInstallation, not created
+}
+[18:15:02.191] INFO (#244): Webhooks.appUninstalled: shop=never-started.myshopify.com status=deleted
+shop: never-started.myshopify.com
+topic: APP_UNINSTALLED
+status: deleted
+[18:15:02.193] INFO (#250): ShopActor.activate: shop=never-started.myshopify.com: no AppInstallation, not created
+shop: never-started.myshopify.com
+[18:15:02.194] INFO (#244): ShopActors.destroy: shop=never-started.myshopify.com status=destroyed
+shop: never-started.myshopify.com
+topic: APP_UNINSTALLED
+status: destroyed
+[18:15:02.211] INFO (#299): ShopActor.updateSettings: shop=leaving.myshopify.com status=updated
+shop: leaving.myshopify.com
+status: updated
+[18:15:02.214] INFO (#307): Webhooks.appUninstalled: shop=leaving.myshopify.com status=deleted
+shop: leaving.myshopify.com
+topic: APP_UNINSTALLED
+status: deleted
+[18:15:02.218] INFO (#317): ShopActor.webSocketClose: shop=leaving.myshopify.com role=merchant code=4410: uninstalled
+shop: leaving.myshopify.com
+role: merchant
+code: 4410
+reason: uninstalled
+[18:15:02.229] INFO (#313): ShopActor.destroy: shop=leaving.myshopify.com sockets=1 closed=true: storage deleted
+shop: leaving.myshopify.com
+sockets: 1
+closed: true
+[18:15:02.229] INFO (#307): ShopActors.destroy: shop=leaving.myshopify.com status=destroyed
+shop: leaving.myshopify.com
+topic: APP_UNINSTALLED
+status: destroyed
+[18:15:02.233] INFO (#330): Webhooks.appUninstalled: shop=leaving.myshopify.com status=deleted
+shop: leaving.myshopify.com
+topic: APP_UNINSTALLED
+status: deleted
+[18:15:02.234] INFO (#336): ShopActor.activate: shop=leaving.myshopify.com: no AppInstallation, not created
+shop: leaving.myshopify.com
+[18:15:02.235] INFO (#330): ShopActors.destroy: shop=leaving.myshopify.com status=destroyed
+shop: leaving.myshopify.com
+topic: APP_UNINSTALLED
+status: destroyed
+[18:15:02.237] INFO (#346): ShopActor.activate: shop=leaving.myshopify.com: no AppInstallation, not created
+shop: leaving.myshopify.com
+[18:15:02.237] ERROR (#344): HTTP handler failed
+RpcCallError: RPC call to "getSettings" failed: ShopActor.activate: no AppInstallation, not created
+    at catch (file:///bundle/backend.js:4:1254)
+    at file:///bundle/Schema-Dxa1JKq9.js:13:6363
+    at ShopActors.getSettings (file:///bundle/backend.js:546:14165)
+    at ShopActors.getSettings (definition) (file:///bundle/backend.js:449:2445)
+    at TestBackend.door (file:///bundle/backend.js:546:15045)
+    at TestBackend.door (definition) (file:///bundle/backend.js:546:13721) {
+  [cause]: Error: ShopActor.activate: no AppInstallation, not created
+}
