@@ -29,9 +29,12 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
    - motio: `scripts/stress-populator.ts` has no store guard and `reset` deletes every product; restrict it to `stress-shop-*` so pool catalogs stay small (scan spec's 90 s, bulks' 60 s). A cancelled subscription breaks `install.setup.ts`.
    - All: `StoreName` in `scripts/lib/worktree.ts`, `berth.json` pools, README store text.
    - berth already gives each store one holder, which the apps need: dev and e2e share one `client_id`, and `shopify app dev` points the app at the last session.
-4. A provision-store command, run once per new store: Shopify CLI store auth, agent Chrome login, the app's plan for each of baton, bang and motio. Add new stores to bang's "Stores with plan access" list for its private `-test` plans (Partner Dashboard).
-5. Create the pool stores. A taken name gets a suffix silently, so check each resulting domain.
-6. Code and docs for the new pool: berth pool regexes (`docs/berth.md`), `StoreName` in each repo's `scripts/lib/worktree.ts`, Baton's fixture guard (`mw10013-dev-shop-NN` only), `scripts/lib/stores.ts` in each repo, the runbooks, AGENTS.md files.
+4. A provision-store command, run once per new store. The steps, done by hand on `mw10013-pool-00` (2026-11-01), each needing the app's server on the store unless noted:
+   - Baton: `vp run stores auth <store>` (no server), `vp run stores plan <store> basic`; dev also `vp run fixture`.
+   - motio: open the app, "Test with this plan", "Approve" (agent Chrome); no script yet.
+   - bang: Flow's Install button at `admin.shopify.com/store/<store>/apps/flow` (shows "not available on your plan" once, then loads); `vp run flows import test/e2e/e2e-local.flow --store <store>`; the store added under Stores with plan access on `apps.shopify.com/services/pricing/bbe5d5caa12ed8e973c9d533fae0e5e2/bang-basic-test?billingSystem=managed` and `.../bang-pro-test?...`, then Save; `vp run stores plan <store> basic`.
+5. Create the pool stores. `mw10013-pool-00` created 2026-11-01 (domain exact) and set up for all three apps; Baton e2e 85/85, motio 21/21, bang 25/25 on it after dev use. 19 to go if the pool is 20.
+6. Code and docs for the new pool: berth pools `pool` (`b31b93d`); Baton PR https://github.com/mw10013/baton/pull/2, bang PR https://github.com/mw10013/bang/pull/2, motio PR https://github.com/mw10013/motio/pull/2 (scripts take pool names; Baton's fixture reads open orders only; motio's populator only on `stress-shop-NN`) await the owner's merge. Left: `berth.json` in each repo moves to `pool` with item 7.
 7. Move every checkout to the new pool; retire the old `dev-shop`/`e2e-shop` pools from berth. Never delete stores.
 8. Worktrees, in order:
    1. Done: `wt` (`1c9d21a`; fixes `3e61aa8` name lookup from main, berth `a138a78` release without an e2e config); the coder skill's git workflow and Shopify worktree playbook (agent-skills `a63e6d8`, `4190369`).
@@ -53,6 +56,8 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 - Store name length and character rules; whether a deleted name can be reused.
 
 ## Done
+
+- 2026-11-01: berth's create command passes `--plan basic` (`a704ea7`).
 
 - 2026-11-01: Baton wt-02 moved onto berth (`dev-shop-02`, `e2e-shop-02`).
 - 2026-11-01: GitHub settings for baton, bang, motio, tools, agent-skills, xnotes and notes: delete branch on merge, squash commit title and body from the PR.
