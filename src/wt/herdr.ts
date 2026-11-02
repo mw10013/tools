@@ -36,19 +36,23 @@ const PaneList = reply(
 );
 
 /**
- * herdr leaves out `foreground_process_group_id` until the shell owns its
- * terminal, and `shell_pid` before the shell exists.
+ * herdr leaves out every field it has no value for (`skip_serializing_if` in
+ * its `PaneProcessInfo`): `foreground_process_group_id` until the shell owns its
+ * terminal, `shell_pid` before the shell exists, `foreground_processes` when
+ * empty, and a process's `argv` when unreadable.
  */
 const ProcessInfo = reply(
   Schema.Struct({
     process_info: Schema.Struct({
       shell_pid: Schema.optional(Schema.Number),
       foreground_process_group_id: Schema.optional(Schema.Number),
-      foreground_processes: Schema.Array(
-        Schema.Struct({
-          pid: Schema.Number,
-          argv: Schema.Array(Schema.String),
-        }),
+      foreground_processes: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            pid: Schema.Number,
+            argv: Schema.optional(Schema.Array(Schema.String)),
+          }),
+        ),
       ),
     }),
   }),
@@ -78,9 +82,9 @@ const busyWith = (directory: string, paneId: string) =>
       info.foreground_process_group_id === info.shell_pid
         ? Option.none<string>()
         : Option.some(
-            info.foreground_processes
+            (info.foreground_processes ?? [])
               .find((process) => process.pid !== info.shell_pid)
-              ?.argv.join(" ") ?? "a shell still starting",
+              ?.argv?.join(" ") ?? "a shell still starting",
           ),
     ),
   );
