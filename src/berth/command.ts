@@ -3,7 +3,7 @@
  * repos and decode this shape with their own schema, so it is versioned by
  * `berth: 1` and only grows.
  *
- * `acquire`, `release` and `create-store` print exactly one JSON document on stdout, success
+ * `acquire`, `show`, `release` and `create-store` print exactly one JSON document on stdout, success
  * or failure; human lines go to stderr. A typed failure exits 1, a usage error
  * exits 2.
  *
@@ -183,6 +183,42 @@ const acquire = Command.make(
   ]),
 );
 
+const show = Command.make(
+  "show",
+  {
+    env: Argument.String("env").pipe(
+      Argument.withDescription("An env declared in berth.json, e.g. dev"),
+    ),
+  },
+  ({ env }) =>
+    run(
+      (policy) =>
+        Effect.gen(function* () {
+          const checkout = yield* findCheckout(".");
+          return yield* Berth.show(policy, checkout, env);
+        }),
+      (lease) =>
+        printJson({
+          berth: 1,
+          lease: Option.match(lease, {
+            onNone: () => null,
+            onSome: toLeaseJson,
+          }),
+        }),
+    ),
+).pipe(
+  Command.withShortDescription(
+    "Print this checkout's lease for an env, or null; never creates one",
+  ),
+  Command.withExamples([
+    {
+      command: "berth show dev",
+      description:
+        "Before stopping a dev server: is there a lease it could have started on",
+    },
+  ]),
+);
+
 const release = Command.make(
   "release",
   {
@@ -328,5 +364,5 @@ export const command = Command.make("berth").pipe(
   Command.withDescription(
     "Lease local dev ports and Shopify dev stores per checkout and env, machine-wide.",
   ),
-  Command.withSubcommands([acquire, release, list, createStore]),
+  Command.withSubcommands([acquire, show, release, list, createStore]),
 );

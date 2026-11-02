@@ -64,6 +64,7 @@ Done: LiveQL 5100 and prelive on berth (12). Done: the worker cap (11, Baton #13
     - Evidence is kept as long as the claim citing it, where it lasts that long: uncited working files and probe output in `$TMPDIR` or the agent's scratchpad, let go; a PR's in its body or attachments; a lasting fact as numbers in a committed doc; a backlog item's or cross-task investigation's in a place every machine can read (proposed below). A claim never cites a scratch or checkout path. Reusable probes are committed scripts (Baton's `probe:rows-read`); their output is evidence only when cited.
     - Proposed for backlog evidence: committed next to the backlog, `docs/evidence/<date>-<slug>/` in tools, small and mostly text (excerpts, trimmed logs, a few screenshots), so it travels with the backlog to any machine (the laptop now, a Linux box later); removed from the tree when the item closes. Large raw artifacts (Playwright traces, full logs) are not kept by default; if one must be, an R2 bucket cited by URL. Machine-local paths fail once threads run on another machine. Undecided.
     - To fix now: the backlog cites `/tmp/motio-alchemy-bak-1` (cleared on reboot) and `~/projects/baton/.logs/e2e-failures/…`, `~/projects/bang/.logs/e2e-failures/…` (in main checkouts' log folders).
+
 ## Unverified
 
 - Whether a Dev Dashboard dev store's plan can change after creation (Shopify's docs are silent; treat as permanent).

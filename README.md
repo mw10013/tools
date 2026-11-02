@@ -241,6 +241,7 @@ clean` takes:
 berth acquire dev                       # print this checkout's dev lease as JSON
 berth acquire dev --bindable            # also fail if a leased port is in use
 berth acquire dev --adopt web=3901 --adopt store=mw10013-pool-01
+berth show dev                          # this checkout's dev lease, or null; never creates one
 berth release                           # clean each store's dev preview, then free
 berth list                              # every lease and the store pool
 berth list --json

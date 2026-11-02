@@ -32,6 +32,7 @@ berth walks up from the working directory to the nearest `berth.json`. That dire
 
 ```sh
 berth acquire <env> [--bindable] [--adopt role=value ...]   # ensure and print this checkout's lease
+berth show <env>                                             # print this checkout's lease, or null; never creates one
 berth release [<env>]                                        # clean the store's dev preview, then free
 berth list [--json]                                          # who holds what, across all projects
 berth create-store <pool>                                    # grow a pool by one, one creation at a time
@@ -40,6 +41,7 @@ berth create-store <pool>                                    # grow a pool by on
 - `acquire` is idempotent. The same checkout and env always get the same lease. When the manifest changes, `acquire` adds ports for new roles, frees ports for removed roles, and adds or drops the store. A store it drops (the env no longer has a store, or names another pool) is cleaned first, as `release` cleans it.
 - `--bindable` means the caller is about to bind the ports. It fails with `PortBusyError` unless every leased port binds right now. A leased port never moves.
 - `--adopt web=3901 --adopt store=mw10013-pool-01` takes exact values once, for migration from `.env`. It fails if another lease holds a value.
+- `show` reads the ledger only. It prints `{ "berth": 1, "lease": <the lease as acquire prints it> }`, with `lease` null when the checkout holds none for the env.
 - `release` runs `shopify app dev clean --config <config> --store <domain>` from the checkout first. If the clean fails, the lease stays and `release` exits nonzero, so running it again is safe. It refuses while this checkout's `shopify app dev` runs on the store, read from `.shopify/dev/app-dev-*.json`. A store whose config file is absent from the checkout is freed without a clean, since no `shopify app dev` ran there with it.
 
 `acquire` prints only this on stdout. Human lines go to stderr.
@@ -109,6 +111,7 @@ Consumers are separate repos. They run `berth` and decode the JSON with their ow
 
 - A Shopify app's `serve.ts` calls `berth acquire <env> --bindable` and passes `store.domain` to `--store`, `ports.graphiql` to `--graphiql-port`, and `ports.web` as `BACKEND_PORT` and `WEBSITE_PORT`.
 - `worktree:init` calls `berth acquire` for each env, so a full pool fails at init with `berth create-store <pool>`. Worktree removal calls `berth release` before `git worktree remove`.
+- A command that stops a server calls `berth show <env>`, not `acquire`: no lease means nothing of this checkout's runs on one, and a checkout whose `worktree:init` failed is not handed a lease on its way out.
 - Playwright and Vite configs call `berth acquire <env>` without `--bindable`, because their own server may hold the port.
 
 CLI 5.0 refuses a second `shopify app dev` in one directory with the same config basename. A checkout that runs dev and e2e at once needs a second config file for e2e, which `store.config` names.

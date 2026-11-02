@@ -232,6 +232,24 @@ const cleanDropped = Effect.fn("Berth.cleanDropped")(function* (
   );
 });
 
+/** `envName` when `berth.json` declares it. */
+const declaredEnv = (checkout: Checkout, envName: string) =>
+  Option.match(
+    Schema.decodeUnknownOption(EnvName)(envName).pipe(
+      Option.filter((env) => Object.hasOwn(checkout.manifest.envs, env)),
+    ),
+    {
+      onNone: () =>
+        Effect.fail(
+          new UnknownEnvError({
+            env: envName,
+            declared: Object.keys(checkout.manifest.envs),
+          }),
+        ),
+      onSome: Effect.succeed,
+    },
+  );
+
 /**
  * Ensures the lease of (checkout, env) matches the manifest and returns it. A
  * matching lease returns without a ledger write.
@@ -242,18 +260,11 @@ export const acquire = Effect.fn("Berth.acquire")(function* (
   envName: string,
   options: AcquireOptions,
 ) {
-  const env = Schema.decodeUnknownOption(EnvName)(envName).pipe(
-    Option.filter((env) => Object.hasOwn(checkout.manifest.envs, env)),
-  );
-  if (Option.isNone(env))
-    return yield* new UnknownEnvError({
-      env: envName,
-      declared: Object.keys(checkout.manifest.envs),
-    });
-  const spec = checkout.manifest.envs[env.value];
+  const env = yield* declaredEnv(checkout, envName);
+  const spec = checkout.manifest.envs[env];
   const now = yield* DateTime.now;
   const request = {
-    key: { machine: policy.machine, checkout: checkout.path, env: env.value },
+    key: { machine: policy.machine, checkout: checkout.path, env: env },
     project: checkout.manifest.project,
     spec,
     adopt: options.adopt,
@@ -266,8 +277,7 @@ export const acquire = Effect.fn("Berth.acquire")(function* (
     ),
     request,
   );
-  if (Option.isSome(dropped))
-    yield* cleanDropped(checkout, env.value, dropped.value);
+  if (Option.isSome(dropped)) yield* cleanDropped(checkout, env, dropped.value);
   const attempt = modifySwept(policy, (state) =>
     reconcile(state, request, { policy, isBindable, now }).pipe(
       Effect.map(({ state, lease, released }) => ({
@@ -370,6 +380,25 @@ export const release = Effect.fn("Berth.release")(function* (
   if (held.length === 0)
     yield* modifySwept(policy, (state) => Effect.succeed({ state, value: 0 }));
   return ended;
+});
+
+/**
+ * The checkout's lease for `env` on this machine, if it holds one. Never
+ * writes: a command that only stops what a lease started asks this, so a
+ * checkout without one is not granted ports and a store on its way out.
+ */
+export const show = Effect.fn("Berth.show")(function* (
+  policy: Policy,
+  checkout: Checkout,
+  envName: string,
+) {
+  const env = yield* declaredEnv(checkout, envName);
+  const key = { machine: policy.machine, checkout: checkout.path, env };
+  return Option.fromNullishOr(
+    (yield* (yield* Ledger).read).leases.find((lease) =>
+      sameKey(lease.key, key),
+    ),
+  );
 });
 
 /** What `list` shows. */
