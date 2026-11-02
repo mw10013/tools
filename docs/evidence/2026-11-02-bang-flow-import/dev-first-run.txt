@@ -1,0 +1,17 @@
+$ vpx --env-file=.env scripts/dev.ts start ⊘ cache disabled
+ok    opened herdr workspace plan-access-past-twenty-stores
+ok    started in herdr tab "dev" (pane w2D:p2)
+ok    server answering (29.7s)
+
+server: herdr tab "dev" (pane w2D:p2)
+dev:    http://localhost:4013
+app:    https://admin.shopify.com/store/mw10013-pool-12/apps/bbe5d5caa12ed8e973c9d533fae0e5e2
+tunnel: https://synthetic-eventually-passport-hayes.trycloudflare.com
+logs:   .logs/dev/current
+ok    tunnel ready in 0.4s
+prepare mw10013-pool-12: set up the store, then seed the dev fixture
+ok    mw10013-pool-12: Flow installed
+
+ERROR
+  Flow refused test/e2e/e2e-local.flow: it is not an unedited Flow export, or its app is not installed.
+

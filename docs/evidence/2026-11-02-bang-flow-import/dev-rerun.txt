@@ -1,0 +1,53 @@
+$ vpx --env-file=.env scripts/dev.ts start ⊘ cache disabled
+reset stage dev-mw: it records no store, and the dev lease is mw10013-pool-12
+no dev server running
+ok    stop (0.1s)
+alchemy 2.0.0-beta.84 is available (you're on 2.0.0-beta.81). Run `pnpm add alchemy@2.0.0-beta.84` to upgrade.
+[05:42:57.521] INFO (#1): Destroy · dev-mw
+[05:42:57.521] INFO (#1): Importing stack module
+[05:43:01.683] INFO (#43): Resolving stack services
+[05:43:01.722] INFO (#1): Loading stack state
+[05:43:01.724] INFO (#1): Computing plan
+[05:43:01.785] INFO (#1): Plan ready (4.3s)
+[05:43:01.786] INFO (#1): Plan: 3 to delete, 10 binding changes
+[05:43:01.786] INFO (#1): [Backend] delete (local)
+[05:43:01.786] INFO (#1): [Backend/D1] unbind
+[05:43:01.786] INFO (#1): [Backend/Server] unbind
+[05:43:01.786] INFO (#1): [Backend/ShopActor] unbind
+[05:43:01.786] INFO (#1): [D1] delete (local)
+[05:43:01.786] INFO (#1): [Website] delete (local)
+[05:43:01.786] INFO (#1): [Website/ADMIN_AUTH_SECRET] unbind
+[05:43:01.786] INFO (#1): [Website/ADMIN_LOGIN_LIMITER] unbind
+[05:43:01.786] INFO (#1): [Website/ADMIN_PASSWORD] unbind
+[05:43:01.786] INFO (#1): [Website/BACKEND] unbind
+[05:43:01.786] INFO (#1): [Website/ENVIRONMENT] unbind
+[05:43:01.786] INFO (#1): [Website/SHOPIFY_API_KEY] unbind
+[05:43:01.786] INFO (#1): [Website/SHOPIFY_APP_URL] unbind
+[05:43:01.786] INFO (#1): 
+[05:43:01.788] INFO (#421): [Website] deleting (local)
+[05:43:01.791] INFO (#421): [Website] deleted (local) (3ms)
+[05:43:01.791] INFO (#419): [Backend] deleting (local)
+[05:43:01.792] INFO (#419): [Backend] deleted (local) (1ms)
+[05:43:01.792] INFO (#423): [D1] deleting (local)
+[05:43:01.793] INFO (#423): [D1] deleted (local) (1ms)
+[05:43:01.794] INFO (#1): 
+[05:43:01.794] INFO (#1): Done: 3 succeeded (8ms)
+ok    destroy stage dev-mw (6.4s)
+ok    started in herdr tab "dev" (pane w2D:p2)
+ok    server answering (25.4s)
+
+server: herdr tab "dev" (pane w2D:p2)
+dev:    http://localhost:4013
+app:    https://admin.shopify.com/store/mw10013-pool-12/apps/bbe5d5caa12ed8e973c9d533fae0e5e2
+tunnel: https://newly-lucia-bridal-cincinnati.trycloudflare.com
+logs:   .logs/dev/current
+ok    tunnel ready in 0.5s
+prepare mw10013-pool-12: set up the store, then seed the dev fixture
+ok    mw10013-pool-12: Flow already installed
+ok    mw10013-pool-12: e2e-local imported and on
+ok    mw10013-pool-12: given access to Bang Basic Test
+ok    mw10013-pool-12: given access to Bang Pro Test
+ok    mw10013-pool-12: on basic (test charge)
+ok    mw10013-pool-12: ready for Bang
+ok    seeded mw10013-pool-12.myshopify.com: entries 9, usage 0
+
