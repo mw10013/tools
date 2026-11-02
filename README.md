@@ -255,15 +255,18 @@ exits 2.
 - `PortBusyError`: `--bindable` found a leased port in use. The lease does not
   move. Stop the holder that `lsof -nP -iTCP:<port> -sTCP:LISTEN` names.
 - `StorePoolExhaustedError`: no store in the pool is free. Run the `create`
-  command from the error, then rerun `berth acquire`. berth never creates or
-  deletes a store.
+  command from the error, `berth create-store <pool>`, then rerun
+  `berth acquire`. `create-store` makes one store at a time on the machine,
+  and none when one is already free. berth never deletes a store.
 - `StoreCleanError`: `shopify app dev clean` failed, so the lease stays. Fix
   the cause and rerun `berth release`.
 - `LeaseInUseError`: this checkout's `shopify app dev` runs on the store. Stop
-  it, then release.
+  it, then release (or rerun `acquire`, when `berth.json` dropped the store).
 
 A lease whose checkout directory is gone ends at the next `acquire` or
-`release` anywhere on the machine. Its store is freed without a clean.
+`release` anywhere on the machine. Its store is cleaned first from another
+checkout of the same project that has the store's app config, when there is
+one.
 
 ### Machine config
 

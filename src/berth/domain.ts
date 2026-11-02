@@ -370,31 +370,53 @@ export const pickStore = (
 };
 
 /**
- * The `shopify store create dev` command that grows `pattern`'s pool by one:
- * the handle one past the highest numbered one, or the pattern's first handle
- * when it has the shape `^<prefix>\d{N}$` and the pool is empty. Every pool
- * store is on the Basic plan, whose rate limits real merchants hit.
+ * The handle that grows `pattern`'s pool by one: one past the highest
+ * numbered one, or the pattern's first handle when it has the shape
+ * `^<prefix>\d{N}$` and the pool is empty. None when the pattern has no
+ * such shape and the pool has no numbered store.
  */
-export const createCommand = (
+export const nextStoreName = (
   state: State,
   pattern: RegExp,
-  policy: Policy,
-): string => {
+): Option.Option<string> => {
   const numbered = state.pool
     .map((store) => /^(.*?)(\d+)$/u.exec(handleOf(store.domain)))
     .filter((match) => match !== null && pattern.test(match[0]))
     .map((match) => ({ prefix: match![1], digits: match![2] }))
     .toSorted((a, b) => Number(a.digits) - Number(b.digits));
   const highest = numbered.at(-1);
+  if (highest !== undefined)
+    return Option.some(
+      `${highest.prefix}${String(Number(highest.digits) + 1).padStart(highest.digits.length, "0")}`,
+    );
   const shape = /^\^([a-z0-9-]+)\\d\{(\d+)\}\$$/u.exec(pattern.source);
-  const name =
-    highest !== undefined
-      ? `${highest.prefix}${String(Number(highest.digits) + 1).padStart(highest.digits.length, "0")}`
-      : shape !== null
-        ? `${shape[1]}${"0".repeat(Number(shape[2]))}`
-        : "<name>";
-  return `shopify store create dev --name ${name} --organization-id ${policy.stores.organizationId} --plan basic --json`;
+  return shape === null
+    ? Option.none()
+    : Option.some(`${shape[1]}${"0".repeat(Number(shape[2]))}`);
 };
+
+/**
+ * The `shopify store create dev` arguments for a store named `name`. Every
+ * pool store is on the Basic plan, whose rate limits real merchants hit.
+ */
+export const createArgs = (
+  name: string,
+  policy: Policy,
+): ReadonlyArray<string> => [
+  "store",
+  "create",
+  "dev",
+  "--name",
+  name,
+  "--organization-id",
+  policy.stores.organizationId,
+  "--plan",
+  "basic",
+];
+
+/** The one command that grows `pool`: `berth create-store`, serialized. */
+export const createCommand = (pool: PoolName): string =>
+  `berth create-store ${pool}`;
 
 /** Exact values `--adopt` asks for, once, for migration from `.env`. */
 export interface Adopt {
@@ -479,6 +501,46 @@ export const pickPort = Effect.fn("Domain.pickPort")(function* (
   }
   return yield* new PortsExhaustedError({ first, last });
 });
+
+/**
+ * The store `current` holds that reconciling `request` gives up: the spec
+ * drops the store, names another pool, or adopts another store. The shell
+ * cleans it before {@link reconcile} frees it.
+ */
+export const droppedStore = (
+  current: Option.Option<Lease>,
+  request: Pick<Request, "spec" | "adopt">,
+): Option.Option<StoreGrant> =>
+  Option.filter(
+    Option.flatMap(current, (lease) => lease.store),
+    (grant) =>
+      request.spec.store === undefined ||
+      request.spec.store.pool !== grant.pool ||
+      Option.exists(request.adopt.store, (domain) => domain !== grant.domain),
+  );
+
+/**
+ * The checkouts on this machine, other than `lease`'s and none in `gone`,
+ * that hold a lease of `lease`'s project: where a swept lease's store can be
+ * cleaned from, since its own checkout left with its app config.
+ */
+export const siblingCheckouts = (
+  state: State,
+  lease: Lease,
+  gone: ReadonlySet<CheckoutPath>,
+): ReadonlyArray<CheckoutPath> => [
+  ...new Set(
+    state.leases
+      .filter(
+        (other) =>
+          other.project === lease.project &&
+          other.key.machine === lease.key.machine &&
+          other.key.checkout !== lease.key.checkout &&
+          !gone.has(other.key.checkout),
+      )
+      .map((other) => other.key.checkout),
+  ),
+];
 
 /**
  * Makes the request's lease match its spec, keeping everything it has: a new

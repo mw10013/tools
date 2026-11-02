@@ -1,6 +1,6 @@
 /**
- * Whether a port binds right now, by binding it. Cross-platform: Node's `net`,
- * no `lsof`.
+ * Facts about this machine right now: whether a port binds, by binding it
+ * (Node's `net`, no `lsof`), and whether a process is alive.
  *
  * @module
  */
@@ -40,3 +40,13 @@ export const isBindable = Effect.fn("Probe.isBindable")(function* (port: Port) {
     if (!(yield* bindsOn(port, host))) return false;
   return true;
 });
+
+/** True when a process with this pid exists, whoever owns it. */
+export const isAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};

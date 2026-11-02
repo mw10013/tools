@@ -18,7 +18,11 @@ import {
   PoolName,
   ProjectName,
   reconcile,
+  createArgs,
   createCommand,
+  droppedStore,
+  nextStoreName,
+  siblingCheckouts,
   StoreDomain,
   release,
   Role,
@@ -359,11 +363,70 @@ describe("stores", () => {
   });
 
   it("names the next store to create", () => {
-    expect(createCommand(pooled, /^mw10013-dev-shop-\d{2}$/u, policy)).toBe(
-      "shopify store create dev --name mw10013-dev-shop-02 --organization-id 130059740 --plan basic --json",
+    expect(nextStoreName(pooled, /^mw10013-dev-shop-\d{2}$/u)).toEqual(
+      Option.some("mw10013-dev-shop-02"),
     );
-    expect(createCommand(pooled, /^mw10013-qa-shop-\d{2}$/u, policy)).toBe(
-      "shopify store create dev --name mw10013-qa-shop-00 --organization-id 130059740 --plan basic --json",
+    expect(nextStoreName(pooled, /^mw10013-qa-shop-\d{2}$/u)).toEqual(
+      Option.some("mw10013-qa-shop-00"),
     );
+    expect(nextStoreName(pooled, /^qa-/u)).toEqual(Option.none());
+    expect(createArgs("mw10013-dev-shop-02", policy).join(" ")).toBe(
+      "store create dev --name mw10013-dev-shop-02 --organization-id 130059740 --plan basic",
+    );
+    expect(createCommand(PoolName.make("dev"))).toBe("berth create-store dev");
+  });
+
+  it("names the store a lease gives up: dropped, another pool, or adopted", () => {
+    const a = run(acquire(pooled, keyOf("/a"), ["web"], devStore));
+    const current = Option.some(a.lease);
+    const spec = (pool?: string) => ({
+      ports: [web],
+      store:
+        pool === undefined
+          ? undefined
+          : { pool: PoolName.make(pool), config: "shopify.app.toml" },
+    });
+    expect(
+      droppedStore(current, { spec: spec("dev"), adopt: noAdopt }),
+    ).toEqual(Option.none());
+    expect(droppedStore(current, { spec: spec(), adopt: noAdopt })).toEqual(
+      a.lease.store,
+    );
+    expect(
+      droppedStore(current, { spec: spec("e2e"), adopt: noAdopt }),
+    ).toEqual(a.lease.store);
+    expect(
+      droppedStore(current, {
+        spec: spec("dev"),
+        adopt: {
+          ...noAdopt,
+          store: Option.some(domainOf("mw10013-dev-shop-01")),
+        },
+      }),
+    ).toEqual(a.lease.store);
+    expect(
+      droppedStore(Option.none(), { spec: spec(), adopt: noAdopt }),
+    ).toEqual(Option.none());
+  });
+
+  it("finds a gone lease's sibling checkouts of the same project", () => {
+    const a = run(acquire(pooled, keyOf("/a"), ["web"], devStore));
+    const b = run(acquire(a.state, keyOf("/b", "e2e"), ["web"]));
+    const c = run(acquire(b.state, keyOf("/c"), ["web"]));
+    const other: State = {
+      ...c.state,
+      leases: [
+        ...c.state.leases,
+        {
+          ...c.lease,
+          key: keyOf("/d"),
+          project: ProjectName.make("other"),
+          ports: {},
+        },
+      ],
+    };
+    expect(
+      siblingCheckouts(other, a.lease, new Set([CheckoutPath.make("/c")])),
+    ).toEqual(["/b"]);
   });
 });
