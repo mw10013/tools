@@ -22,7 +22,7 @@ Decisions and open work for moving baton, bang and motio to one store pool and p
 
 ## Open
 
-Next, in the owner's order (2026-11-02): prelive's port (12). Awaiting merge: the worker cap (11). The owner decides on the two stray stores, `mw10013-pool-06-aj0nuegr` and `-av0uspsy` (5). Done: prepare step (10), app:open, per-run test results, Baton `workflows.spec.ts` (7, merged as Baton #9). Awaiting merge: motio ping evidence https://github.com/mw10013/motio/pull/9, bang admin-check evidence https://github.com/mw10013/bang/pull/9.
+Next, in the owner's order (2026-11-02): prelive's port (12). Awaiting merge: the worker cap (11). The owner decides on the two stray stores, `mw10013-pool-06-aj0nuegr` and `-av0uspsy` (5). Done: prepare step (10), app:open, per-run test results, Baton `workflows.spec.ts` (7, merged as Baton #9). Merged: motio ping evidence (motio #9), bang admin-check evidence (bang #9).
 
 3. Done (read, not run, 2026-11-01): e2e tolerates a store dev used, and dev one e2e used, in all three apps: app data lives in each stage's own local data, and specs make, scope and seed their own. What must change for one pool:
    - Baton: `readOrders` (`scripts/lib/stores.ts:365`) reads `orders(first: 100)` unfiltered and fails past 100; e2e adds 6 orders a run, so add `status:open`. `requireFixtureStore` (`stores.ts:80`, `StoreOf("dev")`) must accept pool names. Cosmetic: fixture app-only order numbers start at #1201 (`fixture.ts:685`), which real numbers pass after ~35 e2e runs.
