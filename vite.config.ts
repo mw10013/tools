@@ -11,7 +11,8 @@ export default defineConfig(({ command, isPreview }) => {
   }
 
   return {
-    fmt: { printWidth: 80 },
+    // Evidence is kept as captured.
+    fmt: { printWidth: 80, ignorePatterns: ["docs/evidence/**"] },
     test: { include: ["src/**/*.test.ts"] },
     lint: {
       options: { typeAware: true, typeCheck: true },
