@@ -38,7 +38,6 @@ import {
 export const START_TIMEOUT = Duration.minutes(3);
 const RECORD_TIMEOUT = Duration.seconds(30);
 const STOP_TIMEOUT = Duration.seconds(30);
-const LOCK_TIMEOUT = Duration.minutes(5);
 const POLL = Duration.millis(500);
 /** The first request after a start may wait on a compile. */
 const ANSWER_TIMEOUT = Duration.seconds(10);
@@ -55,15 +54,6 @@ const s6LogArgs = (directory: string) => [
   directory,
   "1",
 ];
-
-export class LockTimeoutError extends Schema.TaggedError<LockTimeoutError>()(
-  "LockTimeoutError",
-  { lock: Schema.String, holder: Schema.Int },
-) {
-  override get message() {
-    return `pid ${String(this.holder)} still holds ${this.lock} after ${String(Duration.toMinutes(LOCK_TIMEOUT))} minutes`;
-  }
-}
 
 export class ServerExitedError extends Schema.TaggedError<ServerExitedError>()(
   "ServerExitedError",
@@ -208,69 +198,6 @@ const waitUntil = <E, R>(
       yield* Effect.sleep(POLL);
     }
     return true;
-  });
-
-const PidText = Schema.NumberFromString.check(Schema.isInt());
-
-/**
- * A lock whose holder is gone is taken over by renaming it aside: of two
- * takers only one rename finds it, and a taker that finds a live holder's
- * file there puts it back.
- */
-const withLock = <A, E, R>(
-  root: string,
-  name: ServerName,
-  effect: Effect.Effect<A, E, R>,
-) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const lock = yield* at(root, files(name).lock);
-    yield* fs.makeDirectory(yield* at(root, ".state"), { recursive: true });
-    const deadline = DateTime.addDuration(yield* DateTime.now, LOCK_TIMEOUT);
-    let waiting = false;
-    while (true) {
-      const created = yield* fs
-        .writeFileString(lock, String(process.pid), { flag: "wx" })
-        .pipe(
-          Effect.as(true),
-          Effect.orElseSucceed(() => false),
-        );
-      if (created) break;
-      const holder = Option.flatMap(
-        yield* readFile(lock),
-        Schema.decodeUnknownOption(PidText),
-      );
-      if (Option.isSome(holder) && (yield* signal(holder.value, 0))) {
-        if (DateTime.isGreaterThan(yield* DateTime.now, deadline))
-          return yield* new LockTimeoutError({
-            lock: files(name).lock,
-            holder: holder.value,
-          });
-        if (!waiting)
-          yield* Console.error(
-            `wait  pid ${String(holder.value)} holds ${files(name).lock}`,
-          );
-        waiting = true;
-        yield* Effect.sleep(POLL);
-        continue;
-      }
-      const aside = `${lock}.${String(process.pid)}.stale`;
-      const moved = yield* fs.rename(lock, aside).pipe(
-        Effect.as(true),
-        Effect.orElseSucceed(() => false),
-      );
-      if (!moved) continue;
-      const taken = Option.flatMap(
-        yield* readFile(aside),
-        Schema.decodeUnknownOption(PidText),
-      );
-      if (Option.isSome(taken) && (yield* signal(taken.value, 0)))
-        yield* fs.link(aside, lock).pipe(Effect.ignore);
-      yield* fs.remove(aside, { force: true }).pipe(Effect.ignore);
-    }
-    return yield* effect.pipe(
-      Effect.ensuring(fs.remove(lock, { force: true }).pipe(Effect.ignore)),
-    );
   });
 
 const logLine = Effect.fn("Bosun.logLine")(function* (
@@ -512,92 +439,78 @@ export const start = Effect.fn("Bosun.start")(function* (
   },
 ) {
   const { note, timeout } = options;
-  return yield* withLock(
-    root,
-    name,
-    Effect.gen(function* () {
-      const record = yield* readRecord(root, name);
-      if (Option.isSome(record)) {
-        const now = yield* status(root, name);
-        if (now.state === "running" || now.state === "starting") {
-          yield* Console.error(
-            `ok    adopted the running ${name} server (pid ${String(record.value.pid)}, run ${record.value.run})`,
-          );
-          return yield* waitAnswering(root, name, record.value.run, timeout);
-        }
-        if (now.state === "orphaned") {
-          yield* Console.error(
-            `ok    stopping the orphaned ${name} server (group ${String(record.value.group)})`,
-          );
-          yield* stopRecorded(root, name, record.value);
-        }
-        yield* removeFiles(root, name);
-      }
+  const record = yield* readRecord(root, name);
+  if (Option.isSome(record)) {
+    const now = yield* status(root, name);
+    if (now.state === "running" || now.state === "starting") {
+      yield* Console.error(
+        `ok    adopted the running ${name} server (pid ${String(record.value.pid)}, run ${record.value.run})`,
+      );
+      return yield* waitAnswering(root, name, record.value.run, timeout);
+    }
+    if (now.state === "orphaned") {
+      yield* Console.error(
+        `ok    stopping the orphaned ${name} server (group ${String(record.value.group)})`,
+      );
+      yield* stopRecorded(root, name, record.value);
+    }
+    yield* removeFiles(root, name);
+  }
 
-      const runId = newRunId();
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const runner = yield* spawner.spawn(
-        ChildProcess.make(
-          "vpx",
-          [
-            process.argv[1] ?? "bosun.ts",
-            "run",
-            name,
-            "--run",
-            runId,
-            ...Option.match(note, {
-              onNone: () => [],
-              onSome: (text) => ["--note", text],
-            }),
-            "--",
-            ...command,
-          ],
-          {
-            cwd: root,
-            detached: true,
-            stdin: "ignore",
-            stdout: "ignore",
-            stderr: "ignore",
-          },
-        ),
-      );
-      // The spawner kills a referenced child when the scope closes.
-      yield* runner.unref;
-      const recorded = readRecord(root, name).pipe(
-        Effect.map((found) =>
-          Option.exists(found, (value) => value.run === runId),
-        ),
-      );
-      if (!(yield* waitUntil(recorded, RECORD_TIMEOUT)))
-        return yield* new ServerExitedError({
-          name,
-          run: runId,
-          output: yield* runOutputOf(root, name, runId),
-        });
-      yield* Console.error(`ok    started the ${name} server (run ${runId})`);
-      return yield* waitAnswering(root, name, runId, timeout);
-    }),
+  const runId = newRunId();
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const runner = yield* spawner.spawn(
+    ChildProcess.make(
+      "vpx",
+      [
+        process.argv[1] ?? "bosun.ts",
+        "run",
+        name,
+        "--run",
+        runId,
+        ...Option.match(note, {
+          onNone: () => [],
+          onSome: (text) => ["--note", text],
+        }),
+        "--",
+        ...command,
+      ],
+      {
+        cwd: root,
+        detached: true,
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      },
+    ),
   );
+  // The spawner kills a referenced child when the scope closes.
+  yield* runner.unref;
+  const recorded = readRecord(root, name).pipe(
+    Effect.map((found) => Option.exists(found, (value) => value.run === runId)),
+  );
+  if (!(yield* waitUntil(recorded, RECORD_TIMEOUT)))
+    return yield* new ServerExitedError({
+      name,
+      run: runId,
+      output: yield* runOutputOf(root, name, runId),
+    });
+  yield* Console.error(`ok    started the ${name} server (run ${runId})`);
+  return yield* waitAnswering(root, name, runId, timeout);
 }, Effect.scoped);
 
 export const stop = Effect.fn("Bosun.stop")(function* (
   root: string,
   name: ServerName,
 ) {
-  return yield* withLock(
-    root,
-    name,
-    Effect.gen(function* () {
-      const record = yield* readRecord(root, name);
-      if (Option.isNone(record)) {
-        yield* Console.error(`ok    no ${name} server running`);
-        return false;
-      }
-      yield* stopRecorded(root, name, record.value);
-      yield* Console.error(`ok    stopped the ${name} server`);
-      return true;
-    }),
-  );
+  const record = yield* readRecord(root, name);
+  if (Option.isNone(record)) {
+    yield* Console.error(`ok    no ${name} server running`);
+    return false;
+  }
+  yield* stopRecorded(root, name, record.value);
+  yield* Console.error(`ok    stopped the ${name} server`);
+  return true;
 });
 
 export const logs = Effect.fn("Bosun.logs")(function* (

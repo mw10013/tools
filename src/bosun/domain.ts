@@ -3,7 +3,6 @@
  * foreground by `bosun run`, its runner. Each actor owns its own file under
  * `.state/`, so no two write the same one:
  *
- * - `<name>.lock`: the start or stop command that holds it, by pid.
  * - `<name>.json`: the runner's {@link ServerRecord}, from launch to exit.
  * - `<name>.endpoint.json`: the server's {@link Endpoint}, written by the
  *   command itself once it knows its port, through `BOSUN_ENDPOINT`.
@@ -48,7 +47,6 @@ export const ServerRecordJson = Schema.fromJsonString(ServerRecord);
 export const EndpointJson = Schema.fromJsonString(Endpoint);
 
 export const files = (name: ServerName) => ({
-  lock: `.state/${name}.lock`,
   record: `.state/${name}.json`,
   endpoint: `.state/${name}.endpoint.json`,
   logDirectory: `.logs/${name}`,

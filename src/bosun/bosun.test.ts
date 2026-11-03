@@ -1,15 +1,13 @@
-import { execFile, execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { promisify } from "node:util";
 
 import * as Option from "effect/Option";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { RunId, runOutput, ServerName, stateOf } from "./domain.ts";
 
-const execFileAsync = promisify(execFile);
 const ENTRY = path.resolve(import.meta.dirname, "../../bosun.ts");
 
 const FIXTURE = `
@@ -107,19 +105,6 @@ describe("bosun", () => {
     expect(restarted.json.state).toBe("running");
     expect(restarted.json.run).not.toBe(started.json.run);
     expect(alive(started.json.group)).toBe(false);
-  }, 60_000);
-
-  it("runs one server for two starts at once", async () => {
-    const launch = () =>
-      execFileAsync(
-        "vpx",
-        [ENTRY, "start", "dev", "--", "node", "server.mjs"],
-        {
-          cwd: checkout,
-        },
-      ).then(({ stdout }) => JSON.parse(stdout));
-    const [first, second] = await Promise.all([launch(), launch()]);
-    expect(first.run).toBe(second.run);
   }, 60_000);
 });
 

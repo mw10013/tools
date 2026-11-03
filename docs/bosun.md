@@ -27,8 +27,8 @@ bosun logs <name> [-n lines] [-f]
 - `logs` prints the last lines of the log, or follows it across rotation.
 - `run` is internal: the foreground runner that `start` launches.
 
-Two starts or stops of one name never run at once: the second waits for the
-first and then adopts its server.
+bosun takes no lock. Two starts of one name at the same moment can launch two
+servers; one checkout has one agent, so that does not arise.
 
 ## The endpoint contract
 
@@ -67,12 +67,11 @@ exits 1. Version 1 only grows.
 
 ## Files
 
-| Path                          | Written by      | Holds                                               |
-| ----------------------------- | --------------- | --------------------------------------------------- |
-| `.state/<name>.lock`          | `start`, `stop` | The pid of the command holding the lock.            |
-| `.state/<name>.json`          | the runner      | Its pid, the command's process group, the run id.   |
-| `.state/<name>.endpoint.json` | the server      | Its port and URL.                                   |
-| `.logs/<name>/current`        | `s6-log`        | The server's output between start and exit markers. |
+| Path                          | Written by | Holds                                               |
+| ----------------------------- | ---------- | --------------------------------------------------- |
+| `.state/<name>.json`          | the runner | Its pid, the command's process group, the run id.   |
+| `.state/<name>.endpoint.json` | the server | Its port and URL.                                   |
+| `.logs/<name>/current`        | `s6-log`   | The server's output between start and exit markers. |
 
 Each file has one writer. The runner removes its record and the endpoint when
 the command exits. The log rotates at 5 MiB, 20 files, 100 MiB in all, and each
