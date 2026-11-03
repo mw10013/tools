@@ -24,7 +24,7 @@ import { Ledger } from "./ledger.ts";
 const policy: Policy = {
   machine: MachineName.make("test-mbp"),
   ports: { first: Port.make(4000), last: Port.make(4999), reserved: new Set() },
-  stores: { organizationId: "1", pools: new Map() },
+  stores: [],
 };
 
 const web = Role.make("web");
@@ -129,6 +129,30 @@ describe("Ledger", () => {
     expect(kept).toHaveLength(10);
     expect(kept).toContain("g-12.json");
     expect(kept).not.toContain("g-2.json");
+  });
+
+  it("reads a generation that still holds the store pool, and drops it on the next write", async () => {
+    const written = await withLedger((ledger, directory) =>
+      Effect.gen(function* () {
+        fs.mkdirSync(directory, { recursive: true });
+        fs.writeFileSync(
+          path.join(directory, "g-1.json"),
+          JSON.stringify({
+            leases: [],
+            pool: [
+              { domain: "mw10013-pool-00.myshopify.com", lastHolder: null },
+            ],
+            poolSyncedAt: "2026-11-03T13:14:24.871Z",
+          }),
+        );
+        expect((yield* ledger.read).leases).toEqual([]);
+        yield* ledger.modify(addLease(4000));
+        return JSON.parse(
+          fs.readFileSync(path.join(directory, "g-2.json"), "utf8"),
+        ) as object;
+      }),
+    );
+    expect(Object.keys(written)).toEqual(["leases"]);
   });
 
   it("refuses to commit a state that breaks an invariant", async () => {

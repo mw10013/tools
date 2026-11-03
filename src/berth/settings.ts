@@ -1,7 +1,8 @@
 /**
  * What berth reads from disk besides its ledger: the checkout's `berth.json`,
- * the machine's `config.json`, and where the ledger lives. Raw JSON is decoded
- * into domain types here and goes no further.
+ * the machine's `config.json`, the store pool in `stores.json`, and where the
+ * ledger lives. Raw JSON is decoded into domain types here and goes no
+ * further.
  *
  * @module
  */
@@ -12,17 +13,17 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
   CheckoutPath,
   Config as BerthConfig,
   DEFAULT_PORTS,
-  DEFAULT_STORES,
   MachineName,
   Manifest,
   type Policy,
-  PoolName,
   Port,
+  StoreDomain,
 } from "./domain.ts";
 
 /** No `berth.json` in the directory or any parent. */
@@ -35,7 +36,7 @@ export class ManifestNotFoundError extends Schema.TaggedError<ManifestNotFoundEr
   }
 }
 
-/** A `berth.json` or `config.json` that does not decode. */
+/** A `berth.json`, `config.json` or `stores.json` that does not decode. */
 export class SettingsInvalidError extends Schema.TaggedError<SettingsInvalidError>()(
   "SettingsInvalidError",
   { file: Schema.String, issue: Schema.String },
@@ -88,6 +89,34 @@ export const findCheckout = Effect.fn("Settings.findCheckout")(function* (
   }
 });
 
+/** `stores.json`: the handles of the stores berth leases, `<handle>.myshopify.com`. */
+const StoresFile = Schema.Array(
+  Schema.String.pipe(
+    Schema.decodeTo(
+      StoreDomain,
+      SchemaTransformation.transform({
+        decode: (handle) => `${handle}.myshopify.com`,
+        encode: (domain) => domain.slice(0, -".myshopify.com".length),
+      }),
+    ),
+  ),
+);
+
+/** The store pool, from `stores.json` at the root of the repository holding berth. */
+const loadStores = Effect.fn("Settings.loadStores")(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const file = path.resolve(
+    path.dirname(yield* path.fromFileUrl(new URL(import.meta.url))),
+    "../../stores.json",
+  );
+  return yield* decodeFile(
+    StoresFile,
+    file,
+    yield* fs.readFileString(file).pipe(Effect.orDie),
+  );
+});
+
 const xdgDirectory = (variable: string, fallback: string) =>
   Effect.gen(function* () {
     return yield* Config.String(variable).pipe(Config.withDefault(fallback));
@@ -105,9 +134,9 @@ export const ledgerDirectory = Effect.gen(function* () {
 
 /**
  * The machine's policy: `$XDG_CONFIG_HOME/berth/config.json` (default
- * `~/.config/berth/`) over the defaults. The machine name is the config's or
- * the host name without `.local`. A missing file is the defaults; an invalid
- * one fails rather than guessing.
+ * `~/.config/berth/`) over the defaults, and the store pool. The machine name
+ * is the config's or the host name without `.local`. A missing file is the
+ * defaults; an invalid one fails rather than guessing.
  */
 export const loadPolicy = Effect.fn("Settings.loadPolicy")(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -131,19 +160,6 @@ export const loadPolicy = Effect.fn("Settings.loadPolicy")(function* () {
       file,
       issue: `ports.first ${String(first)} is above ports.last ${String(last)}`,
     });
-  const pools = new Map<PoolName, RegExp>();
-  for (const [pool, source] of Object.entries(
-    config.stores?.pools ?? DEFAULT_STORES.pools,
-  )) {
-    try {
-      pools.set(PoolName.make(pool), new RegExp(source, "u"));
-    } catch {
-      return yield* new SettingsInvalidError({
-        file,
-        issue: `stores.pools.${pool} is not a regular expression: ${source}`,
-      });
-    }
-  }
   return {
     machine:
       config.machine ??
@@ -156,10 +172,6 @@ export const loadPolicy = Effect.fn("Settings.loadPolicy")(function* () {
           DEFAULT_PORTS.reserved.map((port) => Port.make(port)),
       ),
     },
-    stores: {
-      organizationId:
-        config.stores?.organizationId ?? DEFAULT_STORES.organizationId,
-      pools,
-    },
+    stores: yield* loadStores(),
   } satisfies Policy;
 });

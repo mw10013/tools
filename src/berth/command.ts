@@ -3,8 +3,8 @@
  * repos and decode this shape with their own schema, so it is versioned by
  * `berth: 1` and only grows.
  *
- * `acquire`, `show`, `release` and `create-store` print exactly one JSON document on stdout, success
- * or failure; human lines go to stderr. A typed failure exits 1, a usage error
+ * `acquire`, `show` and `release` print exactly one JSON document on stdout,
+ * success or failure; human lines go to stderr. A typed failure exits 1, a usage error
  * exits 2.
  *
  * @module
@@ -13,7 +13,6 @@ import * as Console from "effect/Console";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Argument from "effect/cli/Argument";
 import * as Command from "effect/cli/Command";
@@ -24,7 +23,6 @@ import {
   handleOf,
   type Lease,
   type Policy,
-  PoolName,
   Port,
   Role,
   StoreDomain,
@@ -278,11 +276,7 @@ const toListText = (listing: Berth.Listing): string => {
     ]),
   ]);
   const held = listing.stores.filter((store) => Option.isSome(store.holder));
-  const synced = Option.match(listing.poolSyncedAt, {
-    onNone: () => "never synced",
-    onSome: (at) => `synced ${DateTime.formatIso(at)}`,
-  });
-  return `${leases}\n\nstores: ${String(listing.stores.length)} pooled, ${String(held.length)} held, ${String(listing.stores.length - held.length)} free (${synced})`;
+  return `${leases}\n\nstores: ${String(listing.stores.length)} pooled, ${String(held.length)} held, ${String(listing.stores.length - held.length)} free`;
 };
 
 const list = Command.make(
@@ -302,9 +296,8 @@ const list = Command.make(
               ...toLeaseJson(lease),
               stale,
             })),
-            stores: listing.stores.map(({ store, pools, holder }) => ({
-              domain: store.domain,
-              pools,
+            stores: listing.stores.map(({ domain, holder }) => ({
+              domain,
               holder: Option.match(holder, {
                 onNone: () => null,
                 onSome: (lease) => ({
@@ -314,10 +307,6 @@ const list = Command.make(
                 }),
               }),
             })),
-            poolSyncedAt: Option.match(listing.poolSyncedAt, {
-              onNone: () => null,
-              onSome: DateTime.formatIso,
-            }),
           })
         : Console.log(toListText(listing)),
     ),
@@ -327,42 +316,9 @@ const list = Command.make(
   ),
 );
 
-const createStore = Command.make(
-  "create-store",
-  {
-    pool: Argument.String("pool").pipe(
-      Argument.withDescription("A pool in config.json, e.g. pool"),
-      Argument.withSchema(PoolName),
-    ),
-  },
-  ({ pool }) =>
-    run(
-      (policy) =>
-        Effect.gen(function* () {
-          const path = yield* Path.Path;
-          const lock = path.join(
-            path.dirname(yield* ledgerDirectory),
-            "create.lock",
-          );
-          return yield* Berth.createStore(policy, lock, pool);
-        }),
-      ({ domain, created }) => printJson({ berth: 1, store: domain, created }),
-    ),
-).pipe(
-  Command.withShortDescription(
-    "Grow a store pool by one, one creation at a time, unless a store is free",
-  ),
-  Command.withExamples([
-    {
-      command: "berth create-store pool",
-      description: "After StorePoolExhaustedError: make the next pool store",
-    },
-  ]),
-);
-
 export const command = Command.make("berth").pipe(
   Command.withDescription(
     "Lease local dev ports and Shopify dev stores per checkout and env, machine-wide.",
   ),
-  Command.withSubcommands([acquire, show, release, list, createStore]),
+  Command.withSubcommands([acquire, show, release, list]),
 );

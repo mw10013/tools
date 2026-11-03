@@ -1,7 +1,7 @@
 /**
- * Everything berth asks of the Shopify CLI and its files: the org's dev
- * stores, the dev-preview clean, and whether a checkout's `shopify app dev`
- * is running on a store. No CLI JSON shape leaves this module.
+ * What berth reads from the Shopify CLI's files: whether a checkout's
+ * `shopify app dev` is running on a store. No CLI JSON shape leaves this
+ * module.
  *
  * @module
  */
@@ -10,59 +10,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
-import * as ChildProcess from "effect/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-import { type CheckoutPath, StoreDomain } from "./domain.ts";
+import { type CheckoutPath, type StoreDomain } from "./domain.ts";
 import { isAlive } from "./probe.ts";
-
-/** `shopify store list` failed: logged out, offline, or the wrong org. */
-export class StoreListError extends Schema.TaggedError<StoreListError>()(
-  "StoreListError",
-  { organizationId: Schema.String, detail: Schema.String },
-) {
-  override get message() {
-    return `shopify store list --organization-id ${this.organizationId} failed: ${this.detail}`;
-  }
-}
-
-/** `shopify app dev clean` failed; the lease stays, so a rerun retries it. */
-export class StoreCleanError extends Schema.TaggedError<StoreCleanError>()(
-  "StoreCleanError",
-  { store: Schema.String, config: Schema.String, detail: Schema.String },
-) {
-  override get message() {
-    return `shopify app dev clean --config ${this.config} --store ${this.store} failed, so the lease stays: ${this.detail}`;
-  }
-}
-
-/** `shopify store create dev` failed, or Shopify named the store otherwise. */
-export class StoreCreateError extends Schema.TaggedError<StoreCreateError>()(
-  "StoreCreateError",
-  { name: Schema.String, detail: Schema.String },
-) {
-  override get message() {
-    return `shopify store create dev --name ${this.name} failed: ${this.detail}`;
-  }
-}
-
-/** The part of `shopify store create dev --json` berth reads. */
-const Created = Schema.fromJsonString(
-  Schema.Struct({ store: Schema.Struct({ domain: Schema.String }) }),
-);
-
-/** A store command's own failure on stdout: `{ error: true, message }`. */
-const StoreCommandFailure = Schema.fromJsonString(
-  Schema.Struct({ error: Schema.Literal(true), message: Schema.String }),
-);
-
-/** The part of `shopify store list --json` berth reads. */
-const StoreList = Schema.fromJsonString(
-  Schema.Struct({
-    stores: Schema.Array(Schema.Struct({ store: Schema.String })),
-  }),
-);
 
 /** The part of `.shopify/dev/app-dev-*.json` berth reads. */
 const DevSession = Schema.fromJsonString(
@@ -71,132 +21,6 @@ const DevSession = Schema.fromJsonString(
     details: Schema.Struct({ storeFqdn: Schema.String }),
   }),
 );
-
-/** What `--json` prints on stdout when a command fails. */
-const Failure = Schema.fromJsonString(
-  Schema.Struct({ error: Schema.Struct({ message: Schema.String }) }),
-);
-
-/**
- * Runs `shopify` in `directory`: the exit code, stdout, and why it failed,
- * from the `--json` error on stdout or else stderr's last line.
- */
-const shopify = Effect.fn("Shopify.run")(
-  function* (directory: string, args: ReadonlyArray<string>) {
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const process = yield* spawner.spawn(
-      ChildProcess.make("shopify", [...args, "--json", "--no-input"], {
-        cwd: directory,
-        stdin: "ignore",
-        extendEnv: true,
-      }),
-    );
-    const [stdout, stderr, exitCode] = yield* Effect.all(
-      [
-        Stream.mkString(Stream.decodeText(process.stdout)),
-        Stream.mkString(Stream.decodeText(process.stderr)),
-        process.exitCode,
-      ],
-      { concurrency: "unbounded" },
-    );
-    const reason = Option.match(Schema.decodeUnknownOption(Failure)(stdout), {
-      onSome: (failure) => failure.error.message,
-      onNone: () => stderr.trim().split("\n").at(-1) ?? "",
-    });
-    return { exitCode, stdout, detail: `exit ${String(exitCode)}: ${reason}` };
-  },
-  Effect.scoped,
-  Effect.orDie,
-);
-
-/**
- * The org's dev stores, as domains. The staging and production stores are
- * listed too; the pool patterns keep them out.
- */
-export const listStores = Effect.fn("Shopify.listStores")(function* (
-  organizationId: string,
-) {
-  const result = yield* shopify(".", [
-    "store",
-    "list",
-    "--type",
-    "dev",
-    "--organization-id",
-    organizationId,
-  ]);
-  if (result.exitCode !== 0)
-    return yield* new StoreListError({ organizationId, detail: result.detail });
-  const list = yield* Schema.decodeUnknownEffect(StoreList)(result.stdout).pipe(
-    Effect.orDie,
-  );
-  return list.stores.flatMap((store) =>
-    Option.toArray(Schema.decodeUnknownOption(StoreDomain)(store.store)),
-  );
-});
-
-/**
- * Creates a dev store named `name` with `args` and returns its domain. The
- * CLI may print event lines before the result, so each line is tried.
- */
-export const createStore = Effect.fn("Shopify.createStore")(function* (
-  name: string,
-  args: ReadonlyArray<string>,
-) {
-  const result = yield* shopify(".", args);
-  const lines = [result.stdout, ...result.stdout.split("\n")];
-  const created = lines
-    .flatMap((line) =>
-      Option.toArray(Schema.decodeUnknownOption(Created)(line.trim())),
-    )
-    .at(0);
-  if (result.exitCode !== 0 || created === undefined) {
-    const failure = lines
-      .flatMap((line) =>
-        Option.toArray(
-          Schema.decodeUnknownOption(StoreCommandFailure)(line.trim()),
-        ),
-      )
-      .at(0);
-    return yield* new StoreCreateError({
-      name,
-      detail: failure?.message ?? result.detail,
-    });
-  }
-  return yield* Schema.decodeUnknownEffect(StoreDomain)(
-    created.store.domain,
-  ).pipe(
-    Effect.mapError(
-      () =>
-        new StoreCreateError({
-          name,
-          detail: `the result's domain ${created.store.domain} is not a store domain`,
-        }),
-    ),
-  );
-});
-
-/**
- * `shopify app dev clean --config <config> --store <domain>`, run in the
- * checkout so the app config resolves. Cleaning a store with no preview
- * succeeds.
- */
-export const clean = Effect.fn("Shopify.clean")(function* (
-  checkout: CheckoutPath,
-  config: string,
-  store: StoreDomain,
-) {
-  const result = yield* shopify(checkout, [
-    "app",
-    "dev",
-    "clean",
-    "--config",
-    config,
-    "--store",
-    store,
-  ]);
-  if (result.exitCode !== 0)
-    return yield* new StoreCleanError({ store, config, detail: result.detail });
-});
 
 /**
  * The pid of a live `shopify app dev` in `checkout` on `store`, from the CLI's

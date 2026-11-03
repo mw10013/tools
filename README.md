@@ -207,8 +207,9 @@ and logs, with each server publishing the port it picked. See
 
 ## Ports and dev stores
 
-`berth` leases local dev ports and Shopify dev stores to each checkout and env,
-so projects and worktrees on one machine never collide. The design is in
+`berth` leases local dev ports, and Shopify dev stores from the fixed list in
+`stores.json`, to each checkout and env, so projects and worktrees on one
+machine never collide. The design is in
 [docs/berth.md](docs/berth.md).
 
 ### Put berth on PATH
@@ -227,8 +228,8 @@ though `vp run` adds a task banner to stdout.
 ### Declare what a project needs
 
 Commit a `berth.json` at the project root. Each env lists its port roles and,
-for a Shopify app, the store pool and the app config that `shopify app dev
-clean` takes:
+for a Shopify app, the app config its `shopify app dev` runs with. A
+`store.pool` field is accepted and ignored:
 
 ```json
 {
@@ -236,7 +237,7 @@ clean` takes:
   "envs": {
     "dev": {
       "ports": ["web", "graphiql"],
-      "store": { "pool": "dev", "config": "shopify.app.toml" }
+      "store": { "config": "shopify.app.toml" }
     }
   }
 }
@@ -249,7 +250,7 @@ berth acquire dev                       # print this checkout's dev lease as JSO
 berth acquire dev --bindable            # also fail if a leased port is in use
 berth acquire dev --adopt web=3901 --adopt store=mw10013-pool-01
 berth show dev                          # this checkout's dev lease, or null; never creates one
-berth release                           # clean each store's dev preview, then free
+berth release                           # free this checkout's leases
 berth list                              # every lease and the store pool
 berth list --json
 ```
@@ -262,19 +263,21 @@ exits 2.
 
 - `PortBusyError`: `--bindable` found a leased port in use. The lease does not
   move. Stop the holder that `lsof -nP -iTCP:<port> -sTCP:LISTEN` names.
-- `StorePoolExhaustedError`: no store in the pool is free. Run the `create`
-  command from the error, `berth create-store <pool>`, then rerun
-  `berth acquire`. `create-store` makes one store at a time on the machine,
-  and none when one is already free. berth never deletes a store.
-- `StoreCleanError`: `shopify app dev clean` failed, so the lease stays. Fix
-  the cause and rerun `berth release`.
+- `StorePoolExhaustedError`: every store in `stores.json` is leased. Release
+  a lease, or create a store in Shopify and add its handle to `stores.json`.
+  berth never creates or deletes a store.
 - `LeaseInUseError`: this checkout's `shopify app dev` runs on the store. Stop
-  it, then release (or rerun `acquire`, when `berth.json` dropped the store).
+  it, then release.
 
 A lease whose checkout directory is gone ends at the next `acquire` or
-`release` anywhere on the machine. Its store is cleaned first from another
-checkout of the same project that has the store's app config, when there is
-one.
+`release` anywhere on the machine. berth runs no `shopify app dev clean`. The
+next holder's `shopify app dev` replaces the store's dev preview.
+
+### The store pool
+
+`stores.json` at the repository root is a JSON array of store handles, such as
+`"mw10013-pool-00"`. berth leases `<handle>.myshopify.com` for each, first free
+in list order.
 
 ### Machine config
 
@@ -287,20 +290,11 @@ sets machine policy. Every field is optional, and the defaults are:
     "first": 4000,
     "last": 4999,
     "reserved": [3457, 6969, 9333]
-  },
-  "stores": {
-    "organizationId": "130059740",
-    "pools": {
-      "pool": "^mw10013-pool-\\d{2}$"
-    }
   }
 }
 ```
 
-`machine` defaults to the host name without `.local`. A pool pattern matches a
-store's handle, the domain without `.myshopify.com`. The patterns keep the
-staging and production stores out, because Shopify lists them as dev stores
-too. The ledger lives in `$XDG_STATE_HOME/berth/ledger/` (default
+`machine` defaults to the host name without `.local`. The ledger lives in `$XDG_STATE_HOME/berth/ledger/` (default
 `~/.local/state/berth/ledger/`). To try berth without touching the real
 ledger, set both variables to temporary directories.
 
@@ -322,10 +316,10 @@ commands directly.
 - `src/refs/process.ts`: scoped child-process execution.
 - `berth.ts`: berth executable; only runtime wiring.
 - `src/berth/command.ts`: the CLI and its JSON contract.
-- `src/berth/lease.ts`: `acquire`, `release` and `list`.
+- `src/berth/lease.ts`: `acquire`, `release`, `show` and `list`.
 - `src/berth/domain.ts`: the ledger state and its pure transitions.
 - `src/berth/ledger.ts`: the generation ledger and its compare-and-swap.
-- `src/berth/shopify.ts`: Shopify CLI calls and dev session files.
+- `src/berth/shopify.ts`: the Shopify CLI's dev session files.
 - `vite.config.ts`: formatting, lint, TypeScript checks, and the test scope.
 
 Give future tools named entry points at the repository root, with supporting

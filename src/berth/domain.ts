@@ -54,29 +54,22 @@ export const StoreDomain = Schema.String.check(
 ).pipe(Schema.brand("StoreDomain"));
 export type StoreDomain = typeof StoreDomain.Type;
 
-/** A named set of dev stores, defined by a handle pattern in the config. */
-export const PoolName = Schema.String.check(
-  Schema.isPattern(/^[a-z][a-z0-9-]*$/u),
-).pipe(Schema.brand("PoolName"));
-export type PoolName = typeof PoolName.Type;
-
 /** A store domain's handle, the part before `.myshopify.com`. */
 export const handleOf = (domain: StoreDomain): string =>
   domain.slice(0, -".myshopify.com".length);
 
 /**
  * What one env of a project needs: one port per role and, for a Shopify app,
- * a store from `pool`. `config` is the app config file that `shopify app dev
- * clean --config` takes, relative to the checkout. An env whose server picks
- * its own port leaves out `ports`.
+ * a store. `config` is the app config file the env's `shopify app dev` runs
+ * with, relative to the checkout. An env whose server picks its own port
+ * leaves out `ports`. A `store.pool` that older manifests carry decodes and is
+ * ignored.
  */
 export const EnvSpec = Schema.Struct({
   ports: Schema.Array(Role).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed([])),
   ),
-  store: Schema.optional(
-    Schema.Struct({ pool: PoolName, config: Schema.NonEmptyString }),
-  ),
+  store: Schema.optional(Schema.Struct({ config: Schema.NonEmptyString })),
 });
 export type EnvSpec = typeof EnvSpec.Type;
 
@@ -97,13 +90,6 @@ export const Config = Schema.Struct({
       reserved: Schema.optional(Schema.Array(Port)),
     }),
   ),
-  stores: Schema.optional(
-    Schema.Struct({
-      organizationId: Schema.optional(Schema.NonEmptyString),
-      /** Each pool's pattern, matched against a store's handle. */
-      pools: Schema.optional(Schema.Record(PoolName, Schema.NonEmptyString)),
-    }),
-  ),
 });
 export type Config = typeof Config.Type;
 
@@ -118,19 +104,7 @@ export const DEFAULT_PORTS = {
   reserved: [3457, 6969, 9333],
 } as const;
 
-/**
- * The patterns are what keep the staging and production stores out of every
- * pool, since Shopify lists them as type dev too. A config that sets `pools`
- * replaces them.
- */
-export const DEFAULT_STORES = {
-  organizationId: "130059740",
-  pools: {
-    pool: String.raw`^mw10013-pool-\d{2}$`,
-  },
-} as const;
-
-/** {@link Config} with defaults applied and the machine resolved. */
+/** {@link Config} with defaults applied, the machine resolved, and the store pool. */
 export interface Policy {
   readonly machine: MachineName;
   readonly ports: {
@@ -138,10 +112,8 @@ export interface Policy {
     readonly last: Port;
     readonly reserved: ReadonlySet<Port>;
   };
-  readonly stores: {
-    readonly organizationId: string;
-    readonly pools: ReadonlyMap<PoolName, RegExp>;
-  };
+  /** The stores berth may lease, in `stores.json` order. */
+  readonly stores: ReadonlyArray<StoreDomain>;
 }
 
 /**
@@ -155,10 +127,9 @@ export const LeaseKey = Schema.Struct({
 });
 export type LeaseKey = typeof LeaseKey.Type;
 
-/** A store a lease holds, with the pool and app config it was granted for. */
+/** A store a lease holds, with the app config it was granted for. */
 export const StoreGrant = Schema.Struct({
   domain: StoreDomain,
-  pool: PoolName,
   config: Schema.NonEmptyString,
 });
 export type StoreGrant = typeof StoreGrant.Type;
@@ -177,30 +148,13 @@ export const Lease = Schema.Struct({
 export type Lease = typeof Lease.Type;
 
 /**
- * A dev store berth may lease. Who holds it is derived from the leases.
- * `lastHolder` is the key it was last granted to, so a re-acquire gets the
- * same store back.
+ * The whole ledger. {@link checkState} holds for every stored value. The
+ * `pool` and `poolSyncedAt` of older generations decode and are dropped.
  */
-export const PoolStore = Schema.Struct({
-  domain: StoreDomain,
-  lastHolder: Schema.OptionFromNullOr(LeaseKey),
-});
-export type PoolStore = typeof PoolStore.Type;
-
-/** The whole ledger. {@link checkState} holds for every stored value. */
-export const State = Schema.Struct({
-  leases: Schema.Array(Lease),
-  /** The org's dev stores that match a configured pool, from the last sync. */
-  pool: Schema.Array(PoolStore),
-  poolSyncedAt: Schema.OptionFromNullOr(Schema.DateTimeUtcFromString),
-});
+export const State = Schema.Struct({ leases: Schema.Array(Lease) });
 export type State = typeof State.Type;
 
-export const EMPTY_STATE: State = {
-  leases: [],
-  pool: [],
-  poolSyncedAt: Option.none(),
-};
+export const EMPTY_STATE: State = { leases: [] };
 
 export const sameKey = (a: LeaseKey, b: LeaseKey): boolean =>
   a.machine === b.machine && a.checkout === b.checkout && a.env === b.env;
@@ -210,8 +164,8 @@ const describeKey = (key: LeaseKey) =>
 
 /**
  * The invariants of {@link State}: no key held twice, no port held twice on
- * one machine, no reserved port leased on this machine, no store held twice,
- * and every held store in the pool. Returns the first violation.
+ * one machine, no reserved port leased on this machine, and no store held
+ * twice. Returns the first violation.
  */
 export const checkState = (
   state: State,
@@ -220,7 +174,6 @@ export const checkState = (
   const keys = new Set<string>();
   const ports = new Map<string, string>();
   const stores = new Map<StoreDomain, string>();
-  const pool = new Set(state.pool.map((store) => store.domain));
   for (const lease of state.leases) {
     const key = describeKey(lease.key);
     if (keys.has(key)) return Option.some(`lease ${key} appears twice`);
@@ -248,8 +201,6 @@ export const checkState = (
       if (other !== undefined)
         return Option.some(`store ${domain} is held by ${other} and ${key}`);
       stores.set(domain, key);
-      if (!pool.has(domain))
-        return Option.some(`store ${domain} is held by ${key} but not pooled`);
     }
   }
   return Option.none();
@@ -320,106 +271,14 @@ export const holderOf = (
   domain: StoreDomain,
 ): Option.Option<Lease> => Option.fromNullishOr(holders(state).get(domain));
 
-const inAnyPool = (policy: Policy, domain: StoreDomain) =>
-  [...policy.stores.pools.values()].some((pattern) =>
-    pattern.test(handleOf(domain)),
-  );
-
-/**
- * Merges a fresh `shopify store list` into the pool: listed stores that match
- * a configured pool join with no affinity, known ones keep theirs, and a store
- * the list no longer shows stays only while a lease holds it.
- */
-export const mergePool = (
-  state: State,
-  listed: ReadonlyArray<StoreDomain>,
-  policy: Policy,
-  syncedAt: Lease["acquiredAt"],
-): State => {
-  const known = new Map(state.pool.map((store) => [store.domain, store]));
-  const held = holders(state);
-  const domains = new Set([
-    ...listed.filter((domain) => inAnyPool(policy, domain)),
-    ...state.pool.map((store) => store.domain).filter((d) => held.has(d)),
-  ]);
-  return {
-    ...state,
-    pool: [...domains]
-      .toSorted()
-      .map(
-        (domain) => known.get(domain) ?? { domain, lastHolder: Option.none() },
-      ),
-    poolSyncedAt: Option.some(syncedAt),
-  };
-};
-
-/**
- * The free store in `pattern`'s pool that `key` should get: the one it held
- * last, else the lowest.
- */
+/** The first store in `stores` that no lease holds. */
 export const pickStore = (
   state: State,
-  key: LeaseKey,
-  pattern: RegExp,
+  stores: ReadonlyArray<StoreDomain>,
 ): Option.Option<StoreDomain> => {
   const held = holders(state);
-  const free = state.pool.filter(
-    (store) => pattern.test(handleOf(store.domain)) && !held.has(store.domain),
-  );
-  const own = free.find((store) =>
-    Option.exists(store.lastHolder, (last) => sameKey(last, key)),
-  );
-  return Option.fromNullishOr((own ?? free[0])?.domain);
+  return Option.fromNullishOr(stores.find((domain) => !held.has(domain)));
 };
-
-/**
- * The handle that grows `pattern`'s pool by one: one past the highest
- * numbered one, or the pattern's first handle when it has the shape
- * `^<prefix>\d{N}$` and the pool is empty. None when the pattern has no
- * such shape and the pool has no numbered store.
- */
-export const nextStoreName = (
-  state: State,
-  pattern: RegExp,
-): Option.Option<string> => {
-  const numbered = state.pool
-    .map((store) => /^(.*?)(\d+)$/u.exec(handleOf(store.domain)))
-    .filter((match) => match !== null && pattern.test(match[0]))
-    .map((match) => ({ prefix: match![1], digits: match![2] }))
-    .toSorted((a, b) => Number(a.digits) - Number(b.digits));
-  const highest = numbered.at(-1);
-  if (highest !== undefined)
-    return Option.some(
-      `${highest.prefix}${String(Number(highest.digits) + 1).padStart(highest.digits.length, "0")}`,
-    );
-  const shape = /^\^([a-z0-9-]+)\\d\{(\d+)\}\$$/u.exec(pattern.source);
-  return shape === null
-    ? Option.none()
-    : Option.some(`${shape[1]}${"0".repeat(Number(shape[2]))}`);
-};
-
-/**
- * The `shopify store create dev` arguments for a store named `name`. Every
- * pool store is on the Basic plan, whose rate limits real merchants hit.
- */
-export const createArgs = (
-  name: string,
-  policy: Policy,
-): ReadonlyArray<string> => [
-  "store",
-  "create",
-  "dev",
-  "--name",
-  name,
-  "--organization-id",
-  policy.stores.organizationId,
-  "--plan",
-  "basic",
-];
-
-/** The one command that grows `pool`: `berth create-store`, serialized. */
-export const createCommand = (pool: PoolName): string =>
-  `berth create-store ${pool}`;
 
 /** Exact values `--adopt` asks for, once, for migration from `.env`. */
 export interface Adopt {
@@ -472,21 +331,18 @@ export class AdoptRefusedError extends Schema.TaggedError<AdoptRefusedError>()(
   }
 }
 
-/** The manifest names a pool the machine config does not define. */
-export class UnknownPoolError extends Schema.TaggedError<UnknownPoolError>()(
-  "UnknownPoolError",
-  { pool: Schema.String, configured: Schema.Array(Schema.String) },
+/**
+ * Every store in `stores.json` is leased. berth never creates a store; the
+ * pool grows by adding a store to `stores.json`.
+ */
+export class StorePoolExhaustedError extends Schema.TaggedError<StorePoolExhaustedError>()(
+  "StorePoolExhaustedError",
+  { stores: Schema.Int },
 ) {
   override get message() {
-    return `config.json defines no store pool ${this.pool} (defined: ${this.configured.join(", ")})`;
+    return `all ${String(this.stores)} stores in stores.json are leased`;
   }
 }
-
-/** No store in the env's pool is free. The shell syncs the pool and retries. */
-export class NoFreeStoreError extends Schema.TaggedError<NoFreeStoreError>()(
-  "NoFreeStoreError",
-  { pool: PoolName },
-) {}
 
 /**
  * The lowest port in the range that `taken` lacks, is not reserved, and binds
@@ -506,64 +362,20 @@ export const pickPort = Effect.fn("Domain.pickPort")(function* (
 });
 
 /**
- * The store `current` holds that reconciling `request` gives up: the spec
- * drops the store, names another pool, or adopts another store. The shell
- * cleans it before {@link reconcile} frees it.
- */
-export const droppedStore = (
-  current: Option.Option<Lease>,
-  request: Pick<Request, "spec" | "adopt">,
-): Option.Option<StoreGrant> =>
-  Option.filter(
-    Option.flatMap(current, (lease) => lease.store),
-    (grant) =>
-      request.spec.store === undefined ||
-      request.spec.store.pool !== grant.pool ||
-      Option.exists(request.adopt.store, (domain) => domain !== grant.domain),
-  );
-
-/**
- * The checkouts on this machine, other than `lease`'s and none in `gone`,
- * that hold a lease of `lease`'s project: where a swept lease's store can be
- * cleaned from, since its own checkout left with its app config.
- */
-export const siblingCheckouts = (
-  state: State,
-  lease: Lease,
-  gone: ReadonlySet<CheckoutPath>,
-): ReadonlyArray<CheckoutPath> => [
-  ...new Set(
-    state.leases
-      .filter(
-        (other) =>
-          other.project === lease.project &&
-          other.key.machine === lease.key.machine &&
-          other.key.checkout !== lease.key.checkout &&
-          !gone.has(other.key.checkout),
-      )
-      .map((other) => other.key.checkout),
-  ),
-];
-
-/**
  * Makes the request's lease match its spec, keeping everything it has: a new
  * role gets a port, a removed role's port is freed, an adopted value replaces
  * the held one, and a store is granted, kept, or given up when the spec drops
- * it or names another pool. A lease that already matches comes back
- * unchanged, so the ledger skips the write. `acquiredAt` is set once, on
- * creation. `released` is a store the lease gave up, which no clean ran on.
+ * it or `stores.json` no longer lists it. A lease that already matches comes
+ * back unchanged, so the ledger skips the write. `acquiredAt` is set once, on
+ * creation.
  */
 export const reconcile = Effect.fn("Domain.reconcile")(function* (
   state: State,
   request: Request,
   facts: Facts,
 ): Effect.fn.Return<
-  {
-    readonly state: State;
-    readonly lease: Lease;
-    readonly released: Option.Option<StoreGrant>;
-  },
-  PortsExhaustedError | AdoptRefusedError | UnknownPoolError | NoFreeStoreError
+  { readonly state: State; readonly lease: Lease },
+  PortsExhaustedError | AdoptRefusedError | StorePoolExhaustedError
 > {
   const { key, spec, adopt } = request;
   const current = Option.fromNullishOr(
@@ -609,24 +421,13 @@ export const reconcile = Effect.fn("Domain.reconcile")(function* (
     );
   }
 
-  const held = Option.flatMap(current, (lease) => lease.store);
-  let pool = state.pool;
+  const stores = facts.policy.stores;
   let store = Option.none<StoreGrant>();
   if (spec.store !== undefined) {
-    const { pool: poolName, config } = spec.store;
-    const pattern = facts.policy.stores.pools.get(poolName);
-    if (pattern === undefined)
-      return yield* new UnknownPoolError({
-        pool: poolName,
-        configured: [...facts.policy.stores.pools.keys()],
-      });
     const domain = yield* Option.match(adopt.store, {
       onSome: (domain) => {
         const value = `store=${handleOf(domain)}`;
-        if (
-          !pattern.test(handleOf(domain)) ||
-          !state.pool.some((store) => store.domain === domain)
-        )
+        if (!stores.includes(domain))
           return Effect.fail(
             new AdoptRefusedError({ value, reason: "not-in-pool" }),
           );
@@ -641,34 +442,29 @@ export const reconcile = Effect.fn("Domain.reconcile")(function* (
       },
       onNone: () =>
         Option.match(
-          Option.filter(held, (grant) => grant.pool === poolName),
+          Option.filter(
+            Option.flatMap(current, (lease) => lease.store),
+            (grant) => stores.includes(grant.domain),
+          ),
           {
             onSome: (grant) => Effect.succeed(grant.domain),
             onNone: () =>
-              Option.match(pickStore(state, key, pattern), {
+              Option.match(pickStore(state, stores), {
                 onSome: Effect.succeed,
                 onNone: () =>
-                  Effect.fail(new NoFreeStoreError({ pool: poolName })),
+                  Effect.fail(
+                    new StorePoolExhaustedError({ stores: stores.length }),
+                  ),
               }),
           },
         ),
     });
-    store = Option.some({ domain, pool: poolName, config });
-    pool = pool.map((entry) =>
-      entry.domain === domain
-        ? { ...entry, lastHolder: Option.some(key) }
-        : entry,
-    );
+    store = Option.some({ domain, config: spec.store.config });
   } else if (Option.isSome(adopt.store))
     return yield* new AdoptRefusedError({
       value: `store=${handleOf(adopt.store.value)}`,
       reason: "no-store",
     });
-  const released = Option.filter(
-    held,
-    (grant) =>
-      !Option.exists(store, (granted) => granted.domain === grant.domain),
-  );
 
   const lease: Lease = {
     key,
@@ -683,5 +479,5 @@ export const reconcile = Effect.fn("Domain.reconcile")(function* (
   const leases = Option.isSome(current)
     ? state.leases.map((held) => (sameKey(held.key, key) ? lease : held))
     : [...state.leases, lease];
-  return { state: { ...state, leases, pool }, lease, released };
+  return { state: { ...state, leases }, lease };
 });

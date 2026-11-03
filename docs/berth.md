@@ -1,6 +1,6 @@
 # berth
 
-berth hands out local dev resources so many projects and checkouts run side by side on one machine without collisions. Every project can lease ports. A Shopify app can also lease a dev store. A lease belongs to one checkout and one environment, and it lasts until the checkout releases it or its directory disappears.
+berth hands out local dev resources so many projects and checkouts run side by side on one machine without collisions. Every project can lease ports. A Shopify app can also lease a dev store from a fixed list, `stores.json` at the root of this repository. A lease belongs to one checkout and one environment, and it lasts until the checkout releases it or its directory disappears.
 
 ## Usage
 
@@ -12,17 +12,17 @@ A project commits `berth.json` at its root. It declares what each environment ne
   "envs": {
     "dev": {
       "ports": ["web", "graphiql"],
-      "store": { "pool": "dev", "config": "shopify.app.toml" }
+      "store": { "config": "shopify.app.toml" }
     },
     "e2e": {
       "ports": ["web", "graphiql"],
-      "store": { "pool": "e2e", "config": "shopify.app.e2e.toml" }
+      "store": { "config": "shopify.app.e2e.toml" }
     }
   }
 }
 ```
 
-A project with no Shopify app leaves out `store`. An env whose server picks its own port, as one run by bosun does, leaves out `ports`.
+`store.config` is the app config file the env's `shopify app dev` runs with. A `store.pool` field, which older manifests carry, is accepted and ignored. A project with no Shopify app leaves out `store`. An env whose server picks its own port, as one run by bosun does, leaves out `ports`.
 
 ```json
 { "project": "sole-prop", "envs": { "dev": { "ports": ["web"] } } }
@@ -33,16 +33,15 @@ berth walks up from the working directory to the nearest `berth.json`. That dire
 ```sh
 berth acquire <env> [--bindable] [--adopt role=value ...]   # ensure and print this checkout's lease
 berth show <env>                                             # print this checkout's lease, or null; never creates one
-berth release [<env>]                                        # clean the store's dev preview, then free
+berth release [<env>]                                        # free this checkout's leases
 berth list [--json]                                          # who holds what, across all projects
-berth create-store <pool>                                    # grow a pool by one, one creation at a time
 ```
 
-- `acquire` is idempotent. The same checkout and env always get the same lease. When the manifest changes, `acquire` adds ports for new roles, frees ports for removed roles, and adds or drops the store. A store it drops (the env no longer has a store, or names another pool) is cleaned first, as `release` cleans it.
+- `acquire` is idempotent. The same checkout and env always get the same lease. When the manifest changes, `acquire` adds ports for new roles, frees ports for removed roles, and adds or drops the store. It also drops a held store that `stores.json` no longer lists and grants a listed one.
 - `--bindable` means the caller is about to bind the ports. It fails with `PortBusyError` unless every leased port binds right now. A leased port never moves.
-- `--adopt web=3901 --adopt store=mw10013-pool-01` takes exact values once, for migration from `.env`. It fails if another lease holds a value.
+- `--adopt web=3901 --adopt store=mw10013-pool-01` takes exact values once, for migration from `.env`. It fails if another lease holds a value, or if `stores.json` does not list the store.
 - `show` reads the ledger only. It prints `{ "berth": 1, "lease": <the lease as acquire prints it> }`, with `lease` null when the checkout holds none for the env.
-- `release` runs `shopify app dev clean --config <config> --store <domain>` from the checkout first. If the clean fails, the lease stays and `release` exits nonzero, so running it again is safe. It refuses while this checkout's `shopify app dev` runs on the store, read from `.shopify/dev/app-dev-*.json`. A store whose config file is absent from the checkout is freed without a clean, since no `shopify app dev` ran there with it.
+- `release` refuses with `LeaseInUseError` while this checkout's `shopify app dev` runs on a leased store, read from `.shopify/dev/app-dev-*.json`. It leaves the store's dev preview in place. The next holder's `shopify app dev` installs its own preview over it.
 
 `acquire` prints only this on stdout. Human lines go to stderr.
 
@@ -62,9 +61,9 @@ berth create-store <pool>                                    # grow a pool by on
 }
 ```
 
-`store` is `null` for an env without a store. A typed failure exits 1 and prints `{ "berth": 1, "error": { "_tag": "...", "message": "..." } }`. `StorePoolExhaustedError` adds `create`, the exact command to run: `berth create-store <pool>`. A usage error exits 2.
+`store` is `null` for an env without a store. A typed failure exits 1 and prints `{ "berth": 1, "error": { "_tag": "...", "message": "..." } }`. When every listed store is leased, `acquire` fails with `StorePoolExhaustedError`, whose `stores` field is the list's length: "all 14 stores in stores.json are leased". A usage error exits 2. Version 1 only grows. Fields are added, never renamed or removed.
 
-- `create-store` runs one at a time per machine, under `$XDG_STATE_HOME/berth/create.lock` (a pid; a dead holder's lock is taken over, a live one waited on for up to ten minutes). Under the lock it syncs the pool. If a store in the pool is free it creates none and prints that store, so agents that all hit an exhausted pool make one store between them. Otherwise it runs `shopify store create dev --name <next> --organization-id <org> --plan basic` and syncs again. It prints `{ "berth": 1, "store": "<domain>", "created": true|false }`. Shopify gives a taken name a suffixed domain, outside the pool; that fails with `StoreRenamedError` naming it. Version 1 only grows. Fields are added, never renamed or removed.
+`stores.json` is a JSON array of store handles, `["mw10013-pool-00", …]`. berth turns each into the domain `<handle>.myshopify.com` and reads the file from beside its own source at startup. To grow the pool, create the store in Shopify and add its handle to the list. berth makes no Shopify call that lists or creates stores.
 
 Machine policy is `~/.config/berth/config.json`. Every field is optional.
 
@@ -75,12 +74,6 @@ Machine policy is `~/.config/berth/config.json`. Every field is optional.
     "first": 4000,
     "last": 4999,
     "reserved": [3457, 6969, 9333]
-  },
-  "stores": {
-    "organizationId": "130059740",
-    "pools": {
-      "pool": "^mw10013-pool-\\d{2}$"
-    }
   }
 }
 ```
@@ -89,28 +82,30 @@ The reserved ports are xnotes main's dev server (6969), the shared agent Chrome'
 
 ## Design
 
-**State.** The one stored value is `State = { leases, pool, poolSyncedAt }`. A `Lease` is `{ key: { machine, checkout, env }, project, ports: Record<role, Port>, store: Option<{ domain, pool, config }>, acquiredAt }`. Taken ports, a store's holder and stale leases are derived, never stored. `checkState` runs on every read and write and rejects a port, store or key held twice, a leased reserved port, and a held store missing from the pool.
+**State.** The one stored value is `State = { leases }`. A `Lease` is `{ key: { machine, checkout, env }, project, ports: Record<role, Port>, store: Option<{ domain, config }>, acquiredAt }`. Taken ports, a store's holder and stale leases are derived, never stored. The pool is `stores.json`, not the ledger. `checkState` runs on every read and write and rejects a port, store or key held twice and a leased reserved port. Generations written before the pool moved out still hold `pool` and `poolSyncedAt`, and a lease's store still holds `pool`. They decode, and the next write drops them.
 
 **Ledger.** State lives in `$XDG_STATE_HOME/berth/ledger/` (default `~/.local/state/berth`) as immutable generation files `g-<n>.json`. The highest `n` is current. A write goes to a synced temp file and commits with `link(temp, g-<n+1>)`, which fails if another writer won. The loser re-reads and re-runs its transition. There is no lock to go stale. A transition that returns an equal state writes nothing, so a repeat `acquire` is one directory read and one file read. The last 10 generations stay on disk.
 
-**Transitions are pure.** `domain.ts` holds `reconcile`, `release`, `sweep`, `mergePool`, `pickPort` and `pickStore`. The shell gathers facts first (which checkouts exist, bind probes, the clock), so a retried transition repeats no network call. The Shopify CLI runs only between ledger writes.
+**Transitions are pure.** `domain.ts` holds `reconcile`, `release`, `sweep`, `pickPort` and `pickStore`. The shell gathers facts first (which checkouts exist, bind probes, the clock), so a retried transition does no I/O beyond them.
 
 **Ports.** `pickPort` takes the lowest port in the range that no lease holds, is not reserved, and binds on 127.0.0.1, ::1, 0.0.0.0 and ::. An unleased busy port belongs to an unknown program and is skipped.
 
-**Stores.** Pools come from `shopify store list --type dev --json`, which prints `{ stores: [{ store, name, ... }] }`. Each pool's pattern matches the handle, the `store` domain without `.myshopify.com`, never the display `name`. The patterns are also what keep the staging and production stores out, since Shopify lists them as type dev too. berth runs it only when no store in the env's pool is free, then retries once. `acquire` never creates a store and berth never deletes one, because store domains are global and permanent: a store is created only by `create-store`, on request. `pickStore` prefers the store this key held last, then the lowest free one.
+**Stores.** `pickStore` takes the first store in `stores.json` that no lease holds. Any env of any project may lease any listed store. berth never creates or deletes a store, because store domains are global and permanent.
 
-**Stale sweep.** Each `acquire` and `release` first ends this machine's leases whose checkout directory is gone. Before the sweep frees a swept lease's store, berth cleans it from a sibling checkout: another checkout on this machine holding a lease of the same project and having the store's config file. The stale lease still holds the store during the clean, so no one else can be running on it. With no sibling, or when the clean fails, the store is freed anyway, with a warning naming the clean command.
+**No dev preview clean.** berth used to run `shopify app dev clean` whenever a store left a checkout. It no longer does. On 2026-11-03 a motio worktree ran its e2e suite on `mw10013-pool-07` and was removed with no clean. A second worktree then leased the same store, started its e2e server and passed all 21 tests, because its `shopify app dev` installed its own dev preview over the old one.
+
+**Stale sweep.** Each `acquire` and `release` first ends this machine's leases whose checkout directory is gone.
 
 **Machines.** `machine` is in the lease key. The sweep only judges this machine's leases. A shared store pool later is another implementation of the ledger's `modify`, such as a row with a version column.
 
-**Not done.** No time-based expiry, no store creation by `acquire`, no store deletion, no daemon, no env injection or exec wrapper, no `.env` writing.
+**Not done.** No time-based expiry, no store creation or deletion, no daemon, no env injection or exec wrapper, no `.env` writing.
 
 ## Consumers
 
 Consumers are separate repos. They run `berth` and decode the JSON with their own small schema naming only the fields they read. `berth` reaches PATH through a shim, `~/.local/bin/berth`, that runs `vpx ~/projects/tools/berth.ts`.
 
 - A Shopify app's `serve.ts` calls `berth acquire <env> --bindable` and passes `store.domain` to `--store`, `ports.graphiql` to `--graphiql-port`, and `ports.web` as `BACKEND_PORT` and `WEBSITE_PORT`.
-- `worktree:init` calls `berth acquire` for each env, so a full pool fails at init with `berth create-store <pool>`. Worktree removal calls `berth release` before `git worktree remove`.
+- `worktree:init` calls `berth acquire` for each env, so a full pool fails at init with `StorePoolExhaustedError`. Worktree removal calls `berth release` before `git worktree remove`.
 - A command that stops a server calls `berth show <env>`, not `acquire`: no lease means nothing of this checkout's runs on one, and a checkout whose `worktree:init` failed is not handed a lease on its way out.
 - Playwright and Vite configs call `berth acquire <env>` without `--bindable`, because their own server may hold the port.
 
@@ -122,11 +117,10 @@ Two candidates were sketched in parallel. Both chose a committed manifest and th
 
 Grafted from candidate 2:
 
-- per-env store pools and config in the manifest;
-- `--adopt` for migration;
-- release cleans first and keeps the lease on failure.
+- per-env store config in the manifest;
+- `--adopt` for migration.
 
-That replaces candidate 1's outbox of owed cleans, which needed a rule that a store with an owed clean is never granted back to its project.
+Candidate 2 also cleaned a store's dev preview before release. **No dev preview clean** says why berth dropped it.
 
 Rejected:
 
