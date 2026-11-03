@@ -3,8 +3,7 @@
  * a repo opts into more by having it. With a `package.json`, `new` runs
  * `vp install`, then the `worktree:init` script when there is one; `rm` runs
  * the `worktree:teardown` script when there is one, then `berth release`
- * when the checkout has a `berth.json`, and last closes the herdr workspace
- * open on it when no pane there runs anything.
+ * when the checkout has a `berth.json`.
  *
  * Worktrees live at `~/.t3/worktrees/<repo>/<name>`, the layout T3 Code
  * lists, and the directory and the branch share the name.
@@ -21,7 +20,6 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import * as Git from "./git.ts";
-import * as Herdr from "./herdr.ts";
 import { firstFree, fromWords, NAME_MAX, type WorktreeName } from "./name.ts";
 import { run, stream } from "./process.ts";
 
@@ -289,13 +287,6 @@ export const remove = Effect.fn("Worktree.remove")(function* (
   if (Option.isSome(worktree.branch)) {
     yield* run(repository.root, "git", ["branch", "-D", worktree.branch.value]);
     steps.push("git branch -D");
-  }
-  for (const outcome of yield* Herdr.closeWorkspaces(
-    repository.root,
-    worktree.path,
-  )) {
-    yield* Console.error(`wt: ${outcome}`);
-    if (outcome.startsWith("closed")) steps.push("herdr workspace close");
   }
   yield* Console.error(`wt: removed ${worktree.path} (${landed})`);
   return {

@@ -355,10 +355,8 @@ the first push names the branch (`git push -u origin HEAD`). With a
 beyond origin's default branch, or a merged pull request whose head is the
 branch's tip, which is what a squash merge leaves. It runs the repo's
 `worktree:teardown` script if it has one and `berth release` if the checkout
-has a `berth.json`, then removes the worktree and deletes the branch. Last it
-closes the herdr workspace open on the worktree, unless a pane there runs
-something, which it names instead. After `wt rm` from inside the worktree, `cd`
-out: the directory is gone.
+has a `berth.json`, then removes the worktree and deletes the branch. After
+`wt rm` from inside the worktree, `cd` out: the directory is gone.
 
 Each command prints one JSON document on stdout, `{ "wt": 1, ... }`, and its
 progress on stderr. A typed failure exits 1 with `{ "wt": 1, "error": { "_tag",
