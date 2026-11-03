@@ -22,8 +22,8 @@
     "wt": "vpx ./wt.ts"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.5",
-    "effect": "4.0.5",
+    "@effect/platform-node": "4.1.2",
+    "effect": "4.1.2",
     "linkedom": "0.18.12",
     "turndown": "7.2.4"
   },
