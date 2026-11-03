@@ -6,12 +6,14 @@
   "type": "module",
   "imports": {
     "#berth/*": "./src/berth/*",
+    "#bosun/*": "./src/bosun/*",
     "#refs/*": "./src/refs/*",
     "#tts/*": "./src/tts/*",
     "#wt/*": "./src/wt/*"
   },
   "scripts": {
     "berth": "vpx ./berth.ts",
+    "bosun": "vpx ./bosun.ts",
     "prepare": "vp config",
     "refs": "vpx ./refs.ts",
     "tts": "vpx ./tts.ts",

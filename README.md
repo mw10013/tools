@@ -198,6 +198,13 @@ With no argument, `play` chooses the newest recording under `tmp/tts/`; a number
 selects that daily sequence on the newest date containing it. A file path resolves
 relative to this checkout. `mpv --audio-device=help` lists available devices.
 
+## Dev servers
+
+`bosun` runs a checkout's dev servers in the background: start, stop, status
+and logs, with each server publishing the port it picked. See
+[docs/bosun.md](docs/bosun.md). Put it on PATH the same way as berth below, with
+`exec vpx /Users/mw/projects/tools/bosun.ts "$@"` in `~/.local/bin/bosun`.
+
 ## Ports and dev stores
 
 `berth` leases local dev ports and Shopify dev stores to each checkout and env,
