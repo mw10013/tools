@@ -67,10 +67,13 @@ export const handleOf = (domain: StoreDomain): string =>
 /**
  * What one env of a project needs: one port per role and, for a Shopify app,
  * a store from `pool`. `config` is the app config file that `shopify app dev
- * clean --config` takes, relative to the checkout.
+ * clean --config` takes, relative to the checkout. An env whose server picks
+ * its own port leaves out `ports`.
  */
 export const EnvSpec = Schema.Struct({
-  ports: Schema.Array(Role),
+  ports: Schema.Array(Role).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
   store: Schema.optional(
     Schema.Struct({ pool: PoolName, config: Schema.NonEmptyString }),
   ),

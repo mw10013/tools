@@ -22,7 +22,7 @@ A project commits `berth.json` at its root. It declares what each environment ne
 }
 ```
 
-A project with no Shopify app leaves out `store`.
+A project with no Shopify app leaves out `store`. An env whose server picks its own port, as one run by bosun does, leaves out `ports`.
 
 ```json
 { "project": "sole-prop", "envs": { "dev": { "ports": ["web"] } } }

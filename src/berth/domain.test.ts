@@ -1,6 +1,7 @@
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -10,6 +11,7 @@ import {
   EMPTY_STATE,
   EnvName,
   type LeaseKey,
+  Manifest,
   MachineName,
   type Policy,
   Port,
@@ -124,6 +126,19 @@ describe("reconcile", () => {
     const two = run(acquire(one.state, keyOf("/a"), ["web", "graphiql"]));
     expect(two.lease.ports[web]).toBe(one.lease.ports[web]);
     expect(two.lease.ports[graphiql]).not.toBe(one.lease.ports[web]);
+  });
+
+  it("reads an env without ports as one that leases none", () => {
+    const manifest = Schema.decodeUnknownSync(Manifest)({
+      project: "demo",
+      envs: { dev: { store: { pool: "dev", config: "shopify.app.toml" } } },
+    });
+    expect(manifest.envs[EnvName.make("dev")]?.ports).toEqual([]);
+    const one = run(acquire(EMPTY_STATE, keyOf("/a"), ["web", "graphiql"]));
+    const two = run(acquire(one.state, keyOf("/a"), []));
+    expect(two.lease.ports).toEqual({});
+    const other = run(acquire(two.state, keyOf("/b"), ["web"]));
+    expect(other.lease.ports[web]).toBe(one.lease.ports[web]);
   });
 
   it("frees the port of a removed role", () => {
