@@ -105,14 +105,14 @@ export const Config = Schema.Struct({
 export type Config = typeof Config.Type;
 
 /**
- * The reserved ports are the ones something binds fixed: xnotes (6969, 7171),
+ * The reserved ports are the ones something binds fixed: xnotes main's dev server (6969),
  * the shared agent Chrome's CDP (9333) and Shopify CLI's default GraphiQL
  * (3457). A config that sets `reserved` replaces the list.
  */
 export const DEFAULT_PORTS = {
   first: 4000,
   last: 4999,
-  reserved: [3457, 6969, 7171, 9333],
+  reserved: [3457, 6969, 9333],
 } as const;
 
 /**

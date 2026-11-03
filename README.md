@@ -279,7 +279,7 @@ sets machine policy. Every field is optional, and the defaults are:
   "ports": {
     "first": 4000,
     "last": 4999,
-    "reserved": [3457, 6969, 7171, 9333]
+    "reserved": [3457, 6969, 9333]
   },
   "stores": {
     "organizationId": "130059740",

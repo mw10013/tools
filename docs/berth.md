@@ -74,7 +74,7 @@ Machine policy is `~/.config/berth/config.json`. Every field is optional.
   "ports": {
     "first": 4000,
     "last": 4999,
-    "reserved": [3457, 6969, 7171, 9333]
+    "reserved": [3457, 6969, 9333]
   },
   "stores": {
     "organizationId": "130059740",
@@ -85,7 +85,7 @@ Machine policy is `~/.config/berth/config.json`. Every field is optional.
 }
 ```
 
-The reserved ports are xnotes (6969, 7171), the shared agent Chrome's CDP (9333) and the Shopify CLI's default GraphiQL (3457).
+The reserved ports are xnotes main's dev server (6969), the shared agent Chrome's CDP (9333) and the Shopify CLI's default GraphiQL (3457).
 
 ## Design
 
