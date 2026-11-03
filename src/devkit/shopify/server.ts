@@ -23,7 +23,7 @@ import { spawnSync } from "node:child_process";
 import { Resolver } from "node:dns/promises";
 import path from "node:path";
 
-import { ROOT } from "../core/app.ts";
+import { ROOT } from "#devkit/core/app.ts";
 import * as Berth from "./berth.ts";
 import type { WebEnvironment } from "./web.ts";
 import { stage } from "./worktree.ts";

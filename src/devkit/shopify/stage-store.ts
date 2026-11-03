@@ -17,7 +17,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import path from "node:path";
 
-import { APP_NAME, ROOT } from "../core/app.ts";
+import { APP_NAME, ROOT } from "#devkit/core/app.ts";
 import { type Server, ServerError, step, stopServer } from "./server.ts";
 import type { WebEnvironment } from "./web.ts";
 

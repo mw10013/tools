@@ -14,7 +14,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { chromium } from "playwright";
 
-import { runCommand } from "../core/command.ts";
+import { runCommand } from "#devkit/core/command.ts";
 
 /** A failure of the agent Chrome; every message is for the person at the terminal. */
 export class AgentChromeError extends Schema.TaggedError<AgentChromeError>()(

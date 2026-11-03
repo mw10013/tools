@@ -7,6 +7,7 @@
   "imports": {
     "#berth/*": "./src/berth/*",
     "#bosun/*": "./src/bosun/*",
+    "#devkit/*": "./src/devkit/*",
     "#devkit-cli/*": "./src/devkit-cli/*",
     "#refs/*": "./src/refs/*",
     "#tts/*": "./src/tts/*",

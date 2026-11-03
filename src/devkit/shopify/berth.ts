@@ -17,7 +17,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { spawnSync } from "node:child_process";
 
-import { ROOT } from "../core/app.ts";
+import { ROOT } from "#devkit/core/app.ts";
 import type { WebEnvironment } from "./web.ts";
 
 /** berth did not grant the lease; `reason` is berth's error tag, `message` says what to do. */

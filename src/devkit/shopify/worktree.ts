@@ -17,8 +17,11 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import path from "node:path";
 
-import { PerDeveloperStage, type PerDeveloper } from "../cloudflare/stage.ts";
-import { runCommand } from "../core/command.ts";
+import {
+  PerDeveloperStage,
+  type PerDeveloper,
+} from "#devkit/cloudflare/stage.ts";
+import { runCommand } from "#devkit/core/command.ts";
 
 export class WorktreeError extends Schema.TaggedError<WorktreeError>()(
   "WorktreeError",
