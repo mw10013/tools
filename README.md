@@ -393,5 +393,6 @@ devkit status         # edited files, and whether a sync would change anything
 A sync copies committed source only, leaves `*.test.ts` in tools, and writes
 `vendor/devkit/devkit.json` with tools' commit and each file's SHA-256. It
 refuses while a vendored file differs from that record: fix devkit in tools,
-commit, and sync. The app's formatter and linter skip `vendor/`; its type
-check covers it.
+commit, and sync. The app's formatter skips `vendor/` (tools formats at 80
+columns); its linter and type check cover it, since a file the linter ignores
+is not type-checked either.
