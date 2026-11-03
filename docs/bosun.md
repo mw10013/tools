@@ -55,7 +55,7 @@ printf '{"port":%s,"url":"%s"}' "$BACKEND_PORT" "$APP_URL" > "$BOSUN_ENDPOINT"
   "startedAt": "2026-11-03T14:56:35.734Z",
   "port": 50713,
   "url": "https://example.trycloudflare.com",
-  "log": ".logs/dev/current"
+  "log": ".bosun/dev/log/current"
 }
 ```
 
@@ -67,11 +67,14 @@ exits 1. Version 1 only grows.
 
 ## Files
 
+bosun keeps everything in `.bosun/`, which ignores itself with a `.gitignore`
+of `*`, so a checkout needs no ignore line for it. Nothing else writes there.
+
 | Path                          | Written by | Holds                                               |
 | ----------------------------- | ---------- | --------------------------------------------------- |
-| `.state/<name>.json`          | the runner | Its pid, the command's process group, the run id.   |
-| `.state/<name>.endpoint.json` | the server | Its port and URL.                                   |
-| `.logs/<name>/current`        | `s6-log`   | The server's output between start and exit markers. |
+| `.bosun/<name>/record.json`   | the runner | Its pid, the command's process group, the run id.   |
+| `.bosun/<name>/endpoint.json` | the server | Its port and URL.                                   |
+| `.bosun/<name>/log/current`   | `s6-log`   | The server's output between start and exit markers. |
 
 Each file has one writer. The runner removes its record and the endpoint when
 the command exits. The log rotates at 5 MiB, 20 files, 100 MiB in all, and each

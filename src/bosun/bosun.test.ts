@@ -41,7 +41,7 @@ const bosun = (...args: Array<string>) => {
 };
 
 const log = () =>
-  fs.readFileSync(path.join(checkout, ".logs/dev/current"), "utf8");
+  fs.readFileSync(path.join(checkout, ".bosun/dev/log/current"), "utf8");
 
 const alive = (pid: number) => {
   try {
@@ -77,6 +77,13 @@ describe("bosun", () => {
     expect(adopted.stderr).toContain("adopted");
 
     expect(bosun("status", "dev").json.state).toBe("running");
+    expect(started.json.log).toBe(".bosun/dev/log/current");
+    expect(
+      execFileSync("git", ["status", "--porcelain"], {
+        cwd: checkout,
+        encoding: "utf8",
+      }),
+    ).toBe("?? server.mjs\n");
 
     expect(bosun("stop", "dev").code).toBe(0);
     expect(alive(started.json.group)).toBe(false);

@@ -1,10 +1,10 @@
 /**
  * A server is one long-lived command per checkout and name, run in the
  * foreground by `bosun run`, its runner. Each actor owns its own file under
- * `.state/`, so no two write the same one:
+ * `.bosun/<name>/`, so no two write the same one:
  *
- * - `<name>.json`: the runner's {@link ServerRecord}, from launch to exit.
- * - `<name>.endpoint.json`: the server's {@link Endpoint}, written by the
+ * - `record.json`: the runner's {@link ServerRecord}, from launch to exit.
+ * - `endpoint.json`: the server's {@link Endpoint}, written by the
  *   command itself once it knows its port, through `BOSUN_ENDPOINT`.
  *
  * @module
@@ -46,11 +46,15 @@ export type Endpoint = typeof Endpoint.Type;
 export const ServerRecordJson = Schema.fromJsonString(ServerRecord);
 export const EndpointJson = Schema.fromJsonString(Endpoint);
 
+/** bosun owns `.bosun/` in each checkout; its `.gitignore` keeps the folder out of git. */
+export const BOSUN_DIRECTORY = ".bosun";
+
 export const files = (name: ServerName) => ({
-  record: `.state/${name}.json`,
-  endpoint: `.state/${name}.endpoint.json`,
-  logDirectory: `.logs/${name}`,
-  log: `.logs/${name}/current`,
+  directory: `${BOSUN_DIRECTORY}/${name}`,
+  record: `${BOSUN_DIRECTORY}/${name}/record.json`,
+  endpoint: `${BOSUN_DIRECTORY}/${name}/endpoint.json`,
+  logDirectory: `${BOSUN_DIRECTORY}/${name}/log`,
+  log: `${BOSUN_DIRECTORY}/${name}/log/current`,
 });
 
 const MARKER = "====";

@@ -21,6 +21,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import {
+  BOSUN_DIRECTORY,
   type Ending,
   EndpointJson,
   exitMarker,
@@ -227,9 +228,14 @@ export const run = Effect.fn("Bosun.run")(function* (
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const fs = yield* FileSystem.FileSystem;
-  yield* fs.makeDirectory(yield* at(root, ".state"), { recursive: true });
   // s6-log makes its own directory, not that directory's parent.
-  yield* fs.makeDirectory(yield* at(root, ".logs"), { recursive: true });
+  yield* fs.makeDirectory(yield* at(root, files(name).directory), {
+    recursive: true,
+  });
+  yield* fs.writeFileString(
+    yield* at(root, `${BOSUN_DIRECTORY}/.gitignore`),
+    "*\n",
+  );
   yield* removeFiles(root, name);
   const startedAt = DateTime.formatIso(yield* DateTime.now);
   yield* logLine(root, name, startMarker(name, runId, startedAt, note));
