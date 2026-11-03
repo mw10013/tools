@@ -374,3 +374,24 @@ Put it on PATH like berth, with `~/.local/bin/wt`:
 #!/bin/sh
 exec vpx /Users/mw/projects/tools/wt.ts "$@"
 ```
+
+## Shared app tooling
+
+`devkit` holds the dev tooling Baton, motio and bang share, in
+`src/devkit/<layer>/`: `core` for any project, `cloudflare` for Alchemy on
+Workers, `shopify` for an embedded Shopify app. Each layer includes the ones
+before it. An app commits a read-only copy and imports it through
+`"#devkit/*": "./vendor/devkit/*"` in `package.json`, so the app builds alone,
+on Workers Builds too, and devkit resolves the app's own `effect`.
+
+```sh
+devkit sync shopify   # copy tools' HEAD into vendor/devkit/; later syncs reuse the layer
+devkit sync           # bring the app up to tools' HEAD
+devkit status         # edited files, and whether a sync would change anything
+```
+
+A sync copies committed source only, leaves `*.test.ts` in tools, and writes
+`vendor/devkit/devkit.json` with tools' commit and each file's SHA-256. It
+refuses while a vendored file differs from that record: fix devkit in tools,
+commit, and sync. The app's formatter and linter skip `vendor/`; its type
+check covers it.
