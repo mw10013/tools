@@ -175,3 +175,71 @@ describe("wt rm", () => {
     expect(Exit.isSuccess(removed)).toBe(true);
   }, 30_000);
 });
+
+describe("wt init", () => {
+  const shareMain = () => {
+    fs.writeFileSync(
+      path.join(repo, ".gitignore"),
+      "/refs\n.env\n.env.*\n!.env.example\n",
+    );
+    fs.writeFileSync(path.join(repo, ".env.example"), "A=\n");
+    git(repo, "add", ".");
+    git(repo, "commit", "--quiet", "-m", "ignores");
+    git(repo, "push", "--quiet", "origin", "main");
+    fs.writeFileSync(path.join(repo, ".env"), "A=1\nB=2\n");
+    fs.writeFileSync(path.join(repo, ".env.staging"), "S=1\n");
+    fs.mkdirSync(path.join(repo, "refs"));
+  };
+
+  it("copies .env and links refs and untracked .env files, leaving tracked ones", async () => {
+    shareMain();
+    const exit = await create(["shared"]);
+    const worktree = Exit.isSuccess(exit) ? exit.value.path : "";
+    expect(fs.readFileSync(path.join(worktree, ".env"), "utf8")).toBe(
+      "A=1\nB=2\n",
+    );
+    expect(fs.lstatSync(path.join(worktree, ".env")).isSymbolicLink()).toBe(
+      false,
+    );
+    expect(fs.readlinkSync(path.join(worktree, ".env.staging"))).toBe(
+      path.join(repo, ".env.staging"),
+    );
+    expect(fs.readlinkSync(path.join(worktree, "refs"))).toBe(
+      path.join(repo, "refs"),
+    );
+    expect(
+      fs.lstatSync(path.join(worktree, ".env.example")).isSymbolicLink(),
+    ).toBe(false);
+    expect(git(worktree, "status", "--porcelain")).toBe("");
+  }, 30_000);
+
+  it("rebuilds .env from the main checkout's on a second run", async () => {
+    shareMain();
+    const exit = await create(["again"]);
+    const worktree = Exit.isSuccess(exit) ? exit.value.path : "";
+    fs.writeFileSync(path.join(repo, ".env"), "A=1\nC=3\n");
+    expect(
+      Exit.isSuccess(await runEffect(Worktree.init(worktree, Option.none()))),
+    ).toBe(true);
+    expect(fs.readFileSync(path.join(worktree, ".env"), "utf8")).toBe(
+      "A=1\nC=3\n",
+    );
+  }, 30_000);
+
+  it("refuses a real file where a link belongs", async () => {
+    shareMain();
+    const exit = await create(["shadow"]);
+    const worktree = Exit.isSuccess(exit) ? exit.value.path : "";
+    fs.rmSync(path.join(worktree, ".env.staging"));
+    fs.writeFileSync(path.join(worktree, ".env.staging"), "S=2\n");
+    expect(
+      failureTag(await runEffect(Worktree.init(worktree, Option.none()))),
+    ).toBe("SharedPathError");
+  }, 30_000);
+
+  it("refuses the main checkout", async () => {
+    expect(
+      failureTag(await runEffect(Worktree.init(repo, Option.none()))),
+    ).toBe("MainCheckoutError");
+  });
+});

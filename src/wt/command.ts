@@ -115,6 +115,24 @@ const remove = Command.make(
   ),
 );
 
+const init = Command.make(
+  "init",
+  {
+    target: Argument.String("worktree").pipe(
+      Argument.optional,
+      Argument.withDescription(
+        "A path, directory name or branch; default the worktree you are in",
+      ),
+    ),
+  },
+  ({ target }) =>
+    run(Worktree.init(".", target), (initialized) => printJson(initialized)),
+).pipe(
+  Command.withShortDescription(
+    "Set up a worktree again: .env from the main checkout, shared links, worktree:init",
+  ),
+);
+
 const toTable = (rows: ReadonlyArray<ReadonlyArray<string>>): string => {
   const widths = rows[0].map((_, column) =>
     Math.max(...rows.map((row) => row[column].length)),
@@ -165,5 +183,5 @@ export const command = Command.make("wt").pipe(
   Command.withDescription(
     "Make and remove git worktrees for tasks, in any repository.",
   ),
-  Command.withSubcommands([create, remove, list]),
+  Command.withSubcommands([create, init, remove, list]),
 );

@@ -346,13 +346,17 @@ wt new pr 123 --exact         # fail instead of adding -2 when the name is taken
 wt new hotfix --from origin/production
 wt rm                         # the worktree you are in; or wt rm <name|path|branch>
 wt rm --force                 # discard unlanded commits; uncommitted changes still refuse
+wt init                       # set the worktree you are in up again, after the main .env changes
 wt list
 ```
 
 `new` starts from origin's default branch after a fetch, with no upstream, so
-the first push names the branch (`git push -u origin HEAD`). With a
-`package.json` it runs `vp install --frozen-lockfile`, then the repo's
-`worktree:init` script if it has one. `rm` removes only landed work: no commits
+the first push names the branch (`git push -u origin HEAD`). It copies the
+main checkout's `.env` and symlinks its `refs` and every untracked `.env.<suffix>`
+(`.env.staging`, not the tracked `.env.example`), each when the main checkout
+has it. With a `package.json` it runs `vp install --frozen-lockfile`, then the
+repo's `worktree:init` script if it has one. `init` repeats all but the install;
+a link that is a real file or points elsewhere fails rather than being replaced. `rm` removes only landed work: no commits
 beyond origin's default branch, or a merged pull request whose head is the
 branch's tip, which is what a squash merge leaves. It runs the repo's
 `worktree:teardown` script if it has one and `berth release` if the checkout

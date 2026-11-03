@@ -1,7 +1,9 @@
 /**
  * Making and removing worktrees. wt knows git and two optional repo hooks:
- * a repo opts into more by having it. With a `package.json`, `new` runs
- * `vp install`, then the `worktree:init` script when there is one; `rm` runs
+ * a repo opts into more by having it. `new` and `init` share the main
+ * checkout's untracked files ({@link share}); with a `package.json`, `new`
+ * runs `vp install`, then both run the `worktree:init` script when there is
+ * one; `rm` runs
  * the `worktree:teardown` script when there is one, then `berth release`
  * when the checkout has a `berth.json`.
  *
@@ -22,6 +24,7 @@ import * as Schema from "effect/Schema";
 import * as Git from "./git.ts";
 import { firstFree, fromWords, NAME_MAX, type WorktreeName } from "./name.ts";
 import { run, stream } from "./process.ts";
+import { share } from "./share.ts";
 
 /** The words spell no name. */
 export class InvalidNameError extends Schema.TaggedError<InvalidNameError>()(
@@ -59,7 +62,7 @@ export class MainCheckoutError extends Schema.TaggedError<MainCheckoutError>()(
   { path: Schema.String },
 ) {
   override get message() {
-    return `${this.path} is the main checkout, which wt never removes`;
+    return `${this.path} is the main checkout; wt changes linked worktrees only`;
   }
 }
 
@@ -176,16 +179,53 @@ export const create = Effect.fn("Worktree.create")(function* (
   ]);
   yield* Console.error(`wt: created ${worktree} on ${branch} from ${base}`);
   const steps: Array<string> = ["git worktree add"];
+  yield* share(worktree, repository.root);
+  steps.push("share");
   const scripts = yield* packageScripts(worktree);
   if (Option.isSome(scripts)) {
     yield* stream(worktree, "vp", ["install", "--frozen-lockfile"]);
     steps.push("vp install");
-    if (scripts.value.has("worktree:init")) {
-      yield* stream(worktree, "vp", ["run", "worktree:init"]);
-      steps.push("vp run worktree:init");
-    }
   }
+  steps.push(...(yield* initHook(worktree, scripts)));
   return { path: worktree, branch, base, steps } satisfies Created;
+});
+
+const initHook = Effect.fn("Worktree.initHook")(function* (
+  worktree: string,
+  scripts: Option.Option<ReadonlySet<string>>,
+) {
+  if (!Option.exists(scripts, (names) => names.has("worktree:init"))) return [];
+  yield* stream(worktree, "vp", ["run", "worktree:init"]);
+  return ["vp run worktree:init"];
+});
+
+export interface Initialized {
+  readonly path: string;
+  readonly steps: ReadonlyArray<string>;
+}
+
+/**
+ * Sets up an existing linked worktree again, as `new` did after `vp install`:
+ * run it when the main checkout's `.env` or shared files change.
+ */
+export const init = Effect.fn("Worktree.init")(function* (
+  directory: string,
+  target: Option.Option<string>,
+) {
+  const repository = yield* Git.repositoryOf(directory);
+  const worktree = yield* find(
+    repository,
+    directory,
+    Option.getOrElse(target, () => "."),
+  );
+  if (worktree.main)
+    return yield* new MainCheckoutError({ path: worktree.path });
+  yield* share(worktree.path, repository.root);
+  const steps = [
+    "share",
+    ...(yield* initHook(worktree.path, yield* packageScripts(worktree.path))),
+  ];
+  return { path: worktree.path, steps } satisfies Initialized;
 });
 
 /**
