@@ -57,7 +57,7 @@ describe("stage names", () => {
         const exit = yield* Effect.exit(environmentOf(stage));
         assert.deepStrictEqual(
           exit,
-          Exit.fail(new UnknownStageError({ stage })),
+          Exit.die(new UnknownStageError({ stage })),
         );
       }),
     );

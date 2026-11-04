@@ -106,19 +106,17 @@ const isDeployed = Schema.is(Deployed);
 
 /**
  * The environment a stage belongs to: a {@link Deployed} stage is its own, a per-developer
- * stage's is its first part, and a {@link TestFileStage} is `test`. Any other stage fails rather
+ * stage's is its first part, and a {@link TestFileStage} is `test`. Any other stage dies rather
  * than falling back: an environment not listed in {@link Environment} is one nobody has thought
- * through (its seed, its state store, its policy).
+ * through (its seed, its state store, its policy), a misconfiguration no caller can act on.
  */
-export const environmentOf = (
-  stage: string,
-): Effect.Effect<Environment, UnknownStageError> =>
+export const environmentOf = (stage: string): Effect.Effect<Environment> =>
   isDeployed(stage)
     ? Effect.succeed(stage)
     : Option.isSome(decodeTestFileStage(stage))
       ? Effect.succeed("test")
       : Option.match(decodePerDeveloper(stage), {
-          onNone: () => Effect.fail(new UnknownStageError({ stage })),
+          onNone: () => Effect.die(new UnknownStageError({ stage })),
           onSome: ({ environment }) => Effect.succeed(environment),
         });
 
