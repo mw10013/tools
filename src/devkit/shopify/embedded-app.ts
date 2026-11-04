@@ -79,10 +79,25 @@ export const closeDevConsole = async (page: Page): Promise<void> => {
  * stuck on a request that will never finish, and a reload only hides which one. The stall once
  * absorbed here was Alchemy's dev proxy cutting large `Connection: close` responses short, which
  * the Shopify CLI's proxy then held open forever; `patches/@alchemy.run__cloudflare-runtime*` fixes it.
+ *
+ * A store with no plan is sent to Shopify's plan selection page
+ * (`/store/<store>/charges/<app>/pricing_plans`), so a timed-out wait there fails naming the fix.
+ * Self-contained but for {@link appFrame}, {@link awaitHydration} and {@link closeDevConsole}, because
+ * `scripts/browser.ts` sends its source into a browser session with theirs.
  */
 export const prepareApp = async (page: Page): Promise<FrameLocator> => {
   const frame = appFrame(page);
-  await awaitHydration(frame, 15_000);
+  await awaitHydration(frame, 15_000).catch((error: unknown) => {
+    const store =
+      /\/store\/(?<store>[^/]+)\/charges\/[^/]+\/pricing_plans/u.exec(
+        page.url(),
+      )?.groups?.store;
+    if (store !== undefined)
+      throw new Error(
+        `${store} has no plan. Run: vp run stores setup e2e (or dev, whichever lease holds ${store})`,
+      );
+    throw error;
+  });
   await closeDevConsole(page);
   return frame;
 };
