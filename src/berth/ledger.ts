@@ -22,7 +22,7 @@ import * as Path from "effect/Path";
 import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 
-import { checkState, EMPTY_STATE, Lease, State, StoreGrant } from "./domain.ts";
+import { checkState, EMPTY_STATE, State } from "./domain.ts";
 
 /** Committed generations kept on disk after a write. */
 const KEPT_GENERATIONS = 10;
@@ -33,19 +33,6 @@ const TEMP_FILE_LIFETIME = Duration.minutes(1);
 
 const GENERATION = /^g-(\d+)\.json$/u;
 const StateJson = Schema.fromJsonString(State);
-/**
- * A generation as berth wrote it while it also leased ports: a lease may hold
- * no store. Reading drops such a lease and the `ports` field, and the next
- * write commits the result.
- */
-const StoredJson = Schema.fromJsonString(
-  Schema.Struct({
-    leases: Schema.Array(
-      Schema.Struct({ ...Lease.fields, store: Schema.NullOr(StoreGrant) }),
-    ),
-  }),
-);
-
 /** Every retry lost the race: something is writing the ledger in a loop. */
 export class LedgerContendedError extends Schema.TaggedError<LedgerContendedError>()(
   "LedgerContendedError",
@@ -140,7 +127,7 @@ export class Ledger extends Context.Service<
             ),
           );
           if (Option.isNone(text)) return yield* current;
-          const stored = yield* Schema.decodeUnknownEffect(StoredJson)(
+          const state = yield* Schema.decodeUnknownEffect(StateJson)(
             text.value,
           ).pipe(
             Effect.mapError(
@@ -148,11 +135,6 @@ export class Ledger extends Context.Service<
                 `berth ledger ${file} does not decode: ${issue.message}`,
             ),
           );
-          const state: State = {
-            leases: stored.leases.flatMap(({ store, ...lease }) =>
-              store === null ? [] : [{ ...lease, store }],
-            ),
-          };
           return {
             generation,
             state: yield* check(state, file),

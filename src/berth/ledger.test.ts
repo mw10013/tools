@@ -148,44 +148,6 @@ describe("Ledger", () => {
     expect(Object.keys(written)).toEqual(["leases"]);
   });
 
-  it("drops ports and store-less leases from a generation written while berth leased ports, and commits that on the next write", async () => {
-    const lease = {
-      key: { machine, checkout: "/baton", env: "dev" },
-      project: "baton",
-      ports: {},
-      store: { domain: "pool-00.myshopify.com", config: "shopify.app.toml" },
-      acquiredAt: "2026-11-01T06:32:35.459Z",
-    };
-    const portsOnly = {
-      key: { machine, checkout: "/prelive", env: "dev" },
-      project: "prelive",
-      ports: { web: 4000 },
-      store: null,
-      acquiredAt: "2026-11-02T08:46:08.274Z",
-    };
-    const written = await withLedger((ledger, directory) =>
-      Effect.gen(function* () {
-        fs.mkdirSync(directory, { recursive: true });
-        fs.writeFileSync(
-          path.join(directory, "g-1.json"),
-          JSON.stringify({ leases: [lease, portsOnly] }),
-        );
-        expect(
-          (yield* ledger.read).leases.map((held) => held.key.checkout),
-        ).toEqual(["/baton"]);
-        const unchanged = yield* ledger.modify((state) =>
-          Effect.succeed({ state, value: 0 }),
-        );
-        expect(unchanged.wrote).toBe(true);
-        return JSON.parse(
-          fs.readFileSync(path.join(directory, "g-2.json"), "utf8"),
-        ) as unknown;
-      }),
-    );
-    const { ports: _, ...converged } = lease;
-    expect(written).toEqual({ leases: [converged] });
-  });
-
   it("refuses to commit a state that breaks an invariant", async () => {
     const exit = await withLedger((ledger) =>
       Effect.exit(
