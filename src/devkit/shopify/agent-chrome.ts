@@ -190,14 +190,6 @@ const agentChromePids = runCommand("pgrep", [
   Effect.orElseSucceed(() => []),
 );
 
-const runsChromeForTesting = runCommand("pgrep", [
-  "-f",
-  `${CHROME_BINARY} --user-data-dir=${AGENT_PROFILE}`,
-]).pipe(
-  Effect.as(true),
-  Effect.orElseSucceed(() => false),
-);
-
 /** `Browser.close` writes the cookie store out before Chrome exits. */
 const closeOverCdp = Effect.acquireUseRelease(
   Effect.tryPromise(() => chromium.connectOverCDP(AGENT_CDP)),
@@ -399,11 +391,10 @@ export const loginAgentChrome = Effect.fn("AgentChrome.login")(function* (
 ) {
   yield* ensureAgentChrome;
   if (
-    (yield* runsChromeForTesting) &&
-    (yield* checkShopifyLogin(store).pipe(
+    yield* checkShopifyLogin(store).pipe(
       Effect.as(true),
       Effect.orElseSucceed(() => false),
-    ))
+    )
   ) {
     yield* Console.log("The agent Chrome is already logged in to Shopify.");
     return;
