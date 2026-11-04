@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+
 /**
  * This checkout's leases from berth, the machine-wide tool that hands each checkout and
  * environment its own Shopify dev store (`berth.json` declares what each needs). A lease is the
@@ -9,15 +11,15 @@
  * @module
  */
 import * as Effect from "effect/Effect";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Stream from "effect/Stream";
-import * as ChildProcess from "effect/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import { spawnSync } from "node:child_process";
 
 import { ROOT } from "#devkit/core/app.ts";
+
 import type { WebEnvironment } from "./web.ts";
 
 export class LeaseNotGrantedError extends Schema.TaggedError<LeaseNotGrantedError>()(

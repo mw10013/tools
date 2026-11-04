@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 /**
  * The app's handle, which names it in admin URLs: `/apps/<handle>` and `/charges/<handle>`.
  *
@@ -6,7 +8,6 @@
 import * as Array from "effect/Array";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { readFileSync } from "node:fs";
 
 const AppHandleLine = Schema.TemplateLiteralParser([
   'handle = "',

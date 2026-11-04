@@ -8,8 +8,8 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
-  CheckoutPath,
   Config as BerthConfig,
+  CheckoutPath,
   MachineName,
   Manifest,
   type Policy,

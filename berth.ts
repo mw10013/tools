@@ -1,6 +1,6 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import * as Effect from "effect/Effect";
 import * as Command from "effect/cli/Command";
+import * as Effect from "effect/Effect";
 
 import { command } from "#berth/command.ts";
 

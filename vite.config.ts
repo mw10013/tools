@@ -12,10 +12,21 @@ export default defineConfig(({ command, isPreview }) => {
 
   return {
     // Evidence is kept as captured.
-    fmt: { printWidth: 80, ignorePatterns: ["docs/evidence/**"] },
+    fmt: {
+      printWidth: 80,
+      sortImports: true,
+      ignorePatterns: ["docs/evidence/**"],
+    },
     test: { include: ["src/**/*.test.ts"] },
     lint: {
       options: { typeAware: true, typeCheck: true },
+      rules: {
+        // The formatter orders import statements; this orders the names inside one.
+        "sort-imports": [
+          "error",
+          { ignoreDeclarationSort: true, ignoreCase: true },
+        ],
+      },
     },
   };
 });

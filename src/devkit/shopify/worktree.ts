@@ -1,3 +1,5 @@
+import path from "node:path";
+
 /**
  * A checkout of this repository is either the main checkout, whose `.git` is
  * the repository, or a linked worktree on any branch, which `wt new` creates
@@ -11,11 +13,10 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
-import path from "node:path";
 
 import {
-  PerDeveloperStage,
   type PerDeveloper,
+  PerDeveloperStage,
 } from "#devkit/cloudflare/stage.ts";
 import { runCommand } from "#devkit/core/command.ts";
 

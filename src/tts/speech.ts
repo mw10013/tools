@@ -4,10 +4,8 @@
  *
  * @module
  */
-import * as Config from "effect/Config";
-import * as Effect from "effect/Effect";
-import * as Redacted from "effect/Redacted";
-import * as Schema from "effect/Schema";
+
+import { randomUUID } from "node:crypto";
 import {
   link,
   lstat,
@@ -17,8 +15,12 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
+
+import * as Config from "effect/Config";
+import * as Effect from "effect/Effect";
+import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 
 /**
  * The supported models, by the name the CLI takes; `aura-2` means English. Voices are the

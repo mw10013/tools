@@ -1,12 +1,12 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
-import * as Schedule from "effect/Schedule";
-import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as Path from "effect/Path";
+import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import { parseHTML } from "linkedom";
 import TurndownService from "turndown";
 

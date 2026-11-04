@@ -11,14 +11,14 @@ import {
   EMPTY_STATE,
   EnvName,
   type LeaseKey,
-  Manifest,
   MachineName,
+  Manifest,
   type Policy,
   ProjectName,
   reconcile,
-  StoreDomain,
   release,
   type State,
+  StoreDomain,
   sweep,
 } from "./domain.ts";
 

@@ -1,3 +1,6 @@
+import * as Argument from "effect/cli/Argument";
+import * as Command from "effect/cli/Command";
+import * as Flag from "effect/cli/Flag";
 /**
  * The CLI. Each command prints one JSON document on stdout, `{ wt: 1, ... }`,
  * success or failure; human lines go to stderr. A typed failure exits 1, a
@@ -8,9 +11,6 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Argument from "effect/cli/Argument";
-import * as Command from "effect/cli/Command";
-import * as Flag from "effect/cli/Flag";
 
 import * as Worktree from "./worktree.ts";
 

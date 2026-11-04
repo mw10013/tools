@@ -1,16 +1,18 @@
+import zlib from "node:zlib";
+
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Match from "effect/Match";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Schema from "effect/Schema";
-import * as Schedule from "effect/Schedule";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
-import zlib from "node:zlib";
+import * as Match from "effect/Match";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
+import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
+
 import * as Process from "./process.ts";
 
 export class ShopifyDocsError extends Schema.TaggedError<ShopifyDocsError>()(

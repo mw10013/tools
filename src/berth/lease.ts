@@ -14,8 +14,8 @@ import {
   reconcile,
   release as releaseLeases,
   sameKey,
-  type State,
   staleLeases,
+  type State,
   type StoreDomain,
   sweep,
 } from "./domain.ts";

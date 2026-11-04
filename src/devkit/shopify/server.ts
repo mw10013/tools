@@ -1,3 +1,7 @@
+import { spawnSync } from "node:child_process";
+import { Resolver } from "node:dns/promises";
+import path from "node:path";
+
 /**
  * This checkout's dev and e2e servers. bosun runs each (`~/projects/tools/docs/bosun.md`): one
  * Shopify CLI `app dev` per environment, detached, logged to `.bosun/<environment>/log/current`. The
@@ -13,17 +17,15 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Result from "effect/Result";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import * as ChildProcess from "effect/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import { spawnSync } from "node:child_process";
-import { Resolver } from "node:dns/promises";
-import path from "node:path";
 
 import { ROOT } from "#devkit/core/app.ts";
+
 import * as Berth from "./berth.ts";
 import type { WebEnvironment } from "./web.ts";
 import { stage } from "./worktree.ts";

@@ -1,3 +1,7 @@
+import { homedir } from "node:os";
+import path from "node:path";
+import process from "node:process";
+
 import * as Array from "effect/Array";
 import * as Console from "effect/Console";
 import type * as Duration from "effect/Duration";
@@ -5,13 +9,10 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
-import * as Schedule from "effect/Schedule";
-import * as Schema from "effect/Schema";
-import { homedir } from "node:os";
-import path from "node:path";
-import process from "node:process";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import { chromium } from "playwright";
 
 import { runCommand } from "#devkit/core/command.ts";

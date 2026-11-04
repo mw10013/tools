@@ -1,12 +1,12 @@
-import * as Effect from "effect/Effect";
 import * as Config from "effect/Config";
+import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Path from "effect/Path";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import * as Process from "./process.ts";
 import * as M4lDocs from "./m4l-docs.ts";
+import * as Process from "./process.ts";
 import * as ShopifyDocs from "./shopify-docs.ts";
 
 class SharedRefError extends Schema.TaggedError<SharedRefError>()(

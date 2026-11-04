@@ -1,3 +1,11 @@
+import { spawn } from "node:child_process";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import * as Argument from "effect/cli/Argument";
+import * as CliError from "effect/cli/CliError";
+import * as Command from "effect/cli/Command";
+import * as Flag from "effect/cli/Flag";
 /**
  * `vp run tts`: Workers AI text to speech from the shell. `gen` speaks one line into an MP3 under
  * `tmp/tts/` ({@link synthesize}); `play` plays a recording through `mpv`. Credentials come from
@@ -7,13 +15,6 @@
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { spawn } from "node:child_process";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import * as Argument from "effect/cli/Argument";
-import * as CliError from "effect/cli/CliError";
-import * as Command from "effect/cli/Command";
-import * as Flag from "effect/cli/Flag";
 
 import {
   countCharacters,
@@ -22,9 +23,9 @@ import {
   MODEL_NAMES,
   MODELS,
   recordingOutput,
+  speechAccount,
   SpeechError,
   SpeechText,
-  speechAccount,
   speechToken,
   synthesize,
   VOICES,

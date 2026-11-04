@@ -1,3 +1,6 @@
+import * as Argument from "effect/cli/Argument";
+import * as Command from "effect/cli/Command";
+import * as Flag from "effect/cli/Flag";
 /**
  * The CLI. `start` and `status` print one JSON document on stdout
  * ({@link StatusJson}), versioned by `bosun: 1`; human lines go to stderr. A
@@ -9,12 +12,9 @@
 import * as Console from "effect/Console";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
-import * as Argument from "effect/cli/Argument";
-import * as Command from "effect/cli/Command";
-import * as Flag from "effect/cli/Flag";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as Schema from "effect/Schema";
 
 import { RunId, ServerName } from "./domain.ts";
 import * as Bosun from "./server.ts";

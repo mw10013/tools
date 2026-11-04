@@ -1,3 +1,5 @@
+import path from "node:path";
+
 /**
  * Which store a checkout's dev or e2e stage was set up for. A stage keeps the shops of every store
  * its server ran on, so once a lease moves to another store the fixture's members belong to two
@@ -15,9 +17,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import path from "node:path";
 
 import { APP_NAME, ROOT } from "#devkit/core/app.ts";
+
 import { type Server, ServerError, step, stopServer } from "./server.ts";
 import type { WebEnvironment } from "./web.ts";
 

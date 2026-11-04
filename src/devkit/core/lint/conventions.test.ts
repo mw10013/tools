@@ -1,5 +1,5 @@
-import { describe, it } from "vite-plus/test";
 import { RuleTester } from "vite-plus/lint/plugins-dev";
+import { describe, it } from "vite-plus/test";
 
 import conventions from "./conventions.ts";
 
