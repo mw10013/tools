@@ -72,9 +72,9 @@ export const closeDevConsole = async (page: Page): Promise<void> => {
 };
 
 /**
- * One wait, no reload: a cold load through the tunnel hydrates in about 5 s at the 90th
- * percentile, so a frame that is not hydrated after 15 s is stuck on a request that will never
- * finish, and a reload only hides which one.
+ * One wait, no reload: a cold load routed to the local port (`routeAppToLocal`) hydrates in about
+ * 3 s, at most 5 s over 30 loads, so a frame that is not hydrated after 15 s is stuck on a request
+ * that will never finish, and a reload only hides which one.
  *
  * A store with no plan is sent to Shopify's plan selection page
  * (`/store/<store>/charges/<app>/pricing_plans`), so a timed-out wait there fails naming the fix.
