@@ -23,7 +23,7 @@ server.listen(0, "127.0.0.1", () => {
   console.error("a stderr line");
   writeFileSync(process.env.BOSUN_ENDPOINT, JSON.stringify({ port, url: "http://x.test/" + port }));
 });
-process.on("SIGTERM", () => { console.log("got SIGTERM"); server.close(() => process.exit(0)); });
+if (process.argv[2] !== "no-handler") process.on("SIGTERM", () => { console.log("got SIGTERM"); server.close(() => process.exit(0)); });
 `;
 
 let checkout: string;
@@ -93,6 +93,23 @@ describe("bosun", () => {
     expect(log()).toContain("a stderr line");
     expect(log()).toContain("got SIGTERM");
     expect(log()).toContain(`==== dev exit run=${started.json.run} code=0`);
+  }, 60_000);
+
+  it("logs the exit of a server that SIGTERM ends without its own handler", () => {
+    const started = bosun(
+      "start",
+      "dev",
+      "--",
+      "node",
+      "server.mjs",
+      "no-handler",
+    );
+    expect(started.code).toBe(0);
+    expect(bosun("stop", "dev").code).toBe(0);
+    expect(log()).toContain(
+      `==== dev exit run=${started.json.run} signal=SIGTERM`,
+    );
+    expect(bosun("status", "dev").json.state).toBe("stopped");
   }, 60_000);
 
   it("fails a start whose server exits, with that run's output", () => {

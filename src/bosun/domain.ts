@@ -69,6 +69,7 @@ export const startMarker = (
 
 export type Ending =
   | { readonly _tag: "Exited"; readonly code: number }
+  | { readonly _tag: "Signaled"; readonly signal: string }
   | { readonly _tag: "Interrupted" };
 
 export const exitMarker = (name: ServerName, run: RunId, ending: Ending) =>
@@ -77,7 +78,11 @@ export const exitMarker = (name: ServerName, run: RunId, ending: Ending) =>
     name,
     "exit",
     `run=${run}`,
-    ending._tag === "Exited" ? `code=${String(ending.code)}` : "interrupted",
+    ending._tag === "Exited"
+      ? `code=${String(ending.code)}`
+      : ending._tag === "Signaled"
+        ? `signal=${ending.signal}`
+        : "interrupted",
   ].join(" ");
 
 const RUN_OUTPUT_LINES = 60;

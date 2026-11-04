@@ -7,6 +7,7 @@
  * @module
  */
 import { randomBytes } from "node:crypto";
+import { constants } from "node:os";
 
 import * as Console from "effect/Console";
 import * as DateTime from "effect/DateTime";
@@ -219,6 +220,24 @@ const logLine = Effect.fn("Bosun.logLine")(function* (
     .pipe(Effect.ignore);
 });
 
+/** Node's message for a command a signal ended, which Effect's `exitCode` fails with. */
+const SIGNALED = /receipt of signal: '(?<signal>SIG[A-Z0-9]+)'/u;
+
+/**
+ * How the command ended. A command that does not catch SIGTERM, Vite under `vp` for one, ends by
+ * the signal with no exit code, which is a normal stop, not a runner failure.
+ */
+const endingOf = (child: ChildProcessSpawner.ChildProcessHandle) =>
+  child.exitCode.pipe(
+    Effect.map((code): Ending => ({ _tag: "Exited", code: Number(code) })),
+    Effect.catch((error) => {
+      const signal = SIGNALED.exec(String(error.cause))?.groups?.signal;
+      return signal === undefined
+        ? Effect.fail(error)
+        : Effect.succeed<Ending>({ _tag: "Signaled", signal });
+    }),
+  );
+
 export const run = Effect.fn("Bosun.run")(function* (
   root: string,
   name: ServerName,
@@ -297,8 +316,8 @@ export const run = Effect.fn("Bosun.run")(function* (
       Effect.andThen(removeFiles(root, name)),
     );
 
-  const code = yield* Effect.raceFirst(
-    child.exitCode.pipe(Effect.map(Number)),
+  const ending = yield* Effect.raceFirst(
+    endingOf(child),
     logger.exitCode.pipe(
       Effect.flatMap((loggerCode) =>
         stopGroup.pipe(
@@ -319,8 +338,12 @@ export const run = Effect.fn("Bosun.run")(function* (
   );
   // The command's children can outlive it and hold the logger's pipe open.
   if (yield* groupAlive(group)) yield* stopGroup;
-  yield* finish({ _tag: "Exited", code });
-  return code;
+  yield* finish(ending);
+  return ending._tag === "Exited"
+    ? ending.code
+    : ending._tag === "Signaled"
+      ? 128 + (constants.signals[ending.signal as NodeJS.Signals] ?? 0)
+      : 130;
 }, Effect.scoped);
 
 export interface StatusJson {
