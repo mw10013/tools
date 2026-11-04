@@ -18,11 +18,9 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import {
   CheckoutPath,
   Config as BerthConfig,
-  DEFAULT_PORTS,
   MachineName,
   Manifest,
   type Policy,
-  Port,
   StoreDomain,
 } from "./domain.ts";
 
@@ -133,10 +131,10 @@ export const ledgerDirectory = Effect.gen(function* () {
 });
 
 /**
- * The machine's policy: `$XDG_CONFIG_HOME/berth/config.json` (default
- * `~/.config/berth/`) over the defaults, and the store pool. The machine name
- * is the config's or the host name without `.local`. A missing file is the
- * defaults; an invalid one fails rather than guessing.
+ * The machine's policy: the machine name from `$XDG_CONFIG_HOME/berth/config.json`
+ * (default `~/.config/berth/`) or the host name without `.local`, and the store
+ * pool. A missing file is the defaults; an invalid one fails rather than
+ * guessing.
  */
 export const loadPolicy = Effect.fn("Settings.loadPolicy")(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -153,25 +151,10 @@ export const loadPolicy = Effect.fn("Settings.loadPolicy")(function* () {
         yield* fs.readFileString(file).pipe(Effect.orDie),
       )
     : {};
-  const first = config.ports?.first ?? Port.make(DEFAULT_PORTS.first);
-  const last = config.ports?.last ?? Port.make(DEFAULT_PORTS.last);
-  if (first > last)
-    return yield* new SettingsInvalidError({
-      file,
-      issue: `ports.first ${String(first)} is above ports.last ${String(last)}`,
-    });
   return {
     machine:
       config.machine ??
       MachineName.make(os.hostname().replace(/\.local$/u, "")),
-    ports: {
-      first,
-      last,
-      reserved: new Set(
-        config.ports?.reserved ??
-          DEFAULT_PORTS.reserved.map((port) => Port.make(port)),
-      ),
-    },
     stores: yield* loadStores(),
   } satisfies Policy;
 });

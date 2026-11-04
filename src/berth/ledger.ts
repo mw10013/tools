@@ -22,7 +22,7 @@ import * as Path from "effect/Path";
 import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 
-import { checkState, EMPTY_STATE, type Policy, State } from "./domain.ts";
+import { checkState, EMPTY_STATE, Lease, State, StoreGrant } from "./domain.ts";
 
 /** Committed generations kept on disk after a write. */
 const KEPT_GENERATIONS = 10;
@@ -33,6 +33,18 @@ const TEMP_FILE_LIFETIME = Duration.minutes(1);
 
 const GENERATION = /^g-(\d+)\.json$/u;
 const StateJson = Schema.fromJsonString(State);
+/**
+ * A generation as berth wrote it while it also leased ports: a lease may hold
+ * no store. Reading drops such a lease and the `ports` field, and the next
+ * write commits the result.
+ */
+const StoredJson = Schema.fromJsonString(
+  Schema.Struct({
+    leases: Schema.Array(
+      Schema.Struct({ ...Lease.fields, store: Schema.NullOr(StoreGrant) }),
+    ),
+  }),
+);
 
 /** Every retry lost the race: something is writing the ledger in a loop. */
 export class LedgerContendedError extends Schema.TaggedError<LedgerContendedError>()(
@@ -60,8 +72,9 @@ export class Ledger extends Context.Service<
     /**
      * Runs `transition` on the current state and commits its output as the
      * next generation. On a lost race it re-reads and re-runs `transition`, so
-     * a transition may only read and probe. An equal output writes nothing. A
-     * transition failure aborts without writing.
+     * a transition may only read. An output whose encoding equals the
+     * current file writes nothing. A transition failure aborts without
+     * writing.
      */
     readonly modify: <A, E, R>(
       transition: (
@@ -70,8 +83,8 @@ export class Ledger extends Context.Service<
     ) => Effect.Effect<Committed<A>, E | LedgerContendedError, R>;
   }
 >()("app/Ledger") {
-  /** Over `directory`; `policy` checks every state read and written. */
-  static readonly layer = (directory: string, policy: Policy) =>
+  /** Over `directory`; {@link checkState} checks every state read and written. */
+  static readonly layer = (directory: string) =>
     Layer.effect(
       Ledger,
       Effect.gen(function* () {
@@ -93,7 +106,7 @@ export class Ledger extends Context.Service<
         });
 
         const check = (state: State, file: string) =>
-          Option.match(checkState(state, policy), {
+          Option.match(checkState(state), {
             onNone: () => Effect.succeed(state),
             onSome: (violation) =>
               Effect.die(
@@ -101,7 +114,10 @@ export class Ledger extends Context.Service<
               ),
           });
 
-        /** The highest generation and its state; a file pruned mid-read re-lists. */
+        /**
+         * The highest generation, its state and its text as stored; a file
+         * pruned mid-read re-lists.
+         */
         const current: Effect.Effect<{
           readonly generation: number;
           readonly state: State;
@@ -124,7 +140,7 @@ export class Ledger extends Context.Service<
             ),
           );
           if (Option.isNone(text)) return yield* current;
-          const state = yield* Schema.decodeUnknownEffect(StateJson)(
+          const stored = yield* Schema.decodeUnknownEffect(StoredJson)(
             text.value,
           ).pipe(
             Effect.mapError(
@@ -132,10 +148,15 @@ export class Ledger extends Context.Service<
                 `berth ledger ${file} does not decode: ${issue.message}`,
             ),
           );
+          const state: State = {
+            leases: stored.leases.flatMap(({ store, ...lease }) =>
+              store === null ? [] : [{ ...lease, store }],
+            ),
+          };
           return {
             generation,
             state: yield* check(state, file),
-            text: encode(state),
+            text: text.value,
           };
         }).pipe(Effect.orDie);
 

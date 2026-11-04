@@ -18,15 +18,7 @@ import * as Argument from "effect/cli/Argument";
 import * as Command from "effect/cli/Command";
 import * as Flag from "effect/cli/Flag";
 
-import {
-  type Adopt,
-  handleOf,
-  type Lease,
-  type Policy,
-  Port,
-  Role,
-  StoreDomain,
-} from "./domain.ts";
+import { handleOf, type Lease, type Policy, StoreDomain } from "./domain.ts";
 import * as Berth from "./lease.ts";
 import { Ledger } from "./ledger.ts";
 import { findCheckout, ledgerDirectory, loadPolicy } from "./settings.ts";
@@ -38,8 +30,7 @@ interface LeaseJson {
   readonly checkout: string;
   readonly env: string;
   readonly machine: string;
-  readonly ports: Readonly<Record<string, number>>;
-  readonly store: { readonly domain: string; readonly config: string } | null;
+  readonly store: { readonly domain: string; readonly config: string };
   readonly acquiredAt: string;
 }
 
@@ -49,11 +40,7 @@ const toLeaseJson = (lease: Lease): LeaseJson => ({
   checkout: lease.key.checkout,
   env: lease.key.env,
   machine: lease.key.machine,
-  ports: lease.ports,
-  store: Option.match(lease.store, {
-    onNone: () => null,
-    onSome: ({ domain, config }) => ({ domain, config }),
-  }),
+  store: lease.store,
   acquiredAt: DateTime.formatIso(lease.acquiredAt),
 });
 
@@ -76,9 +63,7 @@ const run = <
   Effect.gen(function* () {
     const policy = yield* loadPolicy();
     const directory = yield* ledgerDirectory;
-    return yield* body(policy).pipe(
-      Effect.provide(Ledger.layer(directory, policy)),
-    );
+    return yield* body(policy).pipe(Effect.provide(Ledger.layer(directory)));
   }).pipe(
     Effect.matchEffect({
       onSuccess: print,
@@ -100,33 +85,22 @@ const run = <
     }),
   );
 
-/**
- * `--adopt web=3901 --adopt store=mw10013-pool-01`: `store` takes a
- * store's handle, every other key is a role and takes a port.
- */
+/** `--adopt store=mw10013-pool-01`: a store's handle or domain. */
 const parseAdopt = (
   pairs: Option.Option<Record<string, string>>,
-): Option.Option<Adopt> => {
-  const ports = new Map<Role, Port>();
-  let store = Option.none<StoreDomain>();
-  for (const [key, value] of Object.entries(
-    Option.getOrElse(pairs, () => ({})),
-  )) {
-    if (key === "store") {
-      store = Schema.decodeUnknownOption(StoreDomain)(
-        value.endsWith(".myshopify.com") ? value : `${value}.myshopify.com`,
-      );
-      if (Option.isNone(store)) return Option.none();
-      continue;
-    }
-    const role = Schema.decodeUnknownOption(Role)(key);
-    const port = Schema.decodeUnknownOption(Port)(
-      /^\d+$/u.test(value) ? Number(value) : Number.NaN,
-    );
-    if (Option.isNone(role) || Option.isNone(port)) return Option.none();
-    ports.set(role.value, port.value);
-  }
-  return Option.some({ ports, store });
+): Option.Option<Option.Option<StoreDomain>> => {
+  const { store, ...rest } = Option.getOrElse(
+    pairs,
+    (): Record<string, string> => ({}),
+  );
+  if (Object.keys(rest).length > 0) return Option.none();
+  if (store === undefined) return Option.some(Option.none());
+  return Option.map(
+    Schema.decodeUnknownOption(StoreDomain)(
+      store.endsWith(".myshopify.com") ? store : `${store}.myshopify.com`,
+    ),
+    Option.some,
+  );
 };
 
 const acquire = Command.make(
@@ -135,33 +109,24 @@ const acquire = Command.make(
     env: Argument.String("env").pipe(
       Argument.withDescription("An env declared in berth.json, e.g. dev"),
     ),
-    bindable: Flag.Boolean("bindable").pipe(
-      Flag.withDescription(
-        "Fail with PortBusyError unless every leased port binds now",
-      ),
-      Flag.withDefault(false),
-    ),
     adopt: Flag.KeyValuePair("adopt").pipe(
       Flag.optional,
       Flag.filterMap(
         parseAdopt,
         () =>
-          "--adopt takes role=<port> or store=<handle>, e.g. --adopt web=3901",
+          "--adopt takes store=<handle>, e.g. --adopt store=mw10013-pool-01",
       ),
       Flag.withDescription(
-        "Take an exact value once, for migration: --adopt web=3901",
+        "Take an exact store once, for migration: --adopt store=mw10013-pool-01",
       ),
     ),
   },
-  ({ env, bindable, adopt }) =>
+  ({ env, adopt }) =>
     run(
       (policy) =>
         Effect.gen(function* () {
           const checkout = yield* findCheckout(".");
-          return yield* Berth.acquire(policy, checkout, env, {
-            bindable,
-            adopt,
-          });
+          return yield* Berth.acquire(policy, checkout, env, adopt);
         }),
       (lease) => printJson(toLeaseJson(lease)),
     ),
@@ -173,10 +138,6 @@ const acquire = Command.make(
     {
       command: "berth acquire dev",
       description: "Print this checkout's dev lease, creating it on first use",
-    },
-    {
-      command: "berth acquire dev --bindable",
-      description: "Same, and fail if a leased port is in use",
     },
   ]),
 );
@@ -261,18 +222,12 @@ const toTable = (rows: ReadonlyArray<ReadonlyArray<string>>): string => {
 
 const toListText = (listing: Berth.Listing): string => {
   const leases = toTable([
-    ["PROJECT", "ENV", "CHECKOUT", "PORTS", "STORE"],
+    ["PROJECT", "ENV", "CHECKOUT", "STORE"],
     ...listing.holdings.map(({ lease, stale }) => [
       lease.project,
       lease.key.env,
       `${lease.key.checkout}${stale ? " (stale)" : ""}`,
-      Object.entries(lease.ports)
-        .map(([role, port]) => `${role}=${String(port)}`)
-        .join(" "),
-      Option.match(lease.store, {
-        onNone: () => "",
-        onSome: (store) => handleOf(store.domain),
-      }),
+      handleOf(lease.store.domain),
     ]),
   ]);
   const held = listing.stores.filter((store) => Option.isSome(store.holder));
@@ -312,13 +267,13 @@ const list = Command.make(
     ),
 ).pipe(
   Command.withShortDescription(
-    "Show who holds which ports and stores, across all projects",
+    "Show who holds which stores, across all projects",
   ),
 );
 
 export const command = Command.make("berth").pipe(
   Command.withDescription(
-    "Lease local dev ports and Shopify dev stores per checkout and env, machine-wide.",
+    "Lease Shopify dev stores per checkout and env, machine-wide.",
   ),
   Command.withSubcommands([acquire, show, release, list]),
 );

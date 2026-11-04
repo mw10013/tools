@@ -6,28 +6,19 @@ import { NodeServices } from "@effect/platform-node";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
   CheckoutPath,
   EnvName,
   MachineName,
-  type Policy,
-  Port,
   ProjectName,
-  Role,
   type State,
+  StoreDomain,
 } from "./domain.ts";
 import { Ledger } from "./ledger.ts";
 
-const policy: Policy = {
-  machine: MachineName.make("test-mbp"),
-  ports: { first: Port.make(4000), last: Port.make(4999), reserved: new Set() },
-  stores: [],
-};
-
-const web = Role.make("web");
+const machine = MachineName.make("test-mbp");
 const directories: Array<string> = [];
 afterEach(() => {
   for (const directory of directories.splice(0))
@@ -47,7 +38,7 @@ const withLedger = <A, E>(
       return yield* body(yield* Ledger, directory);
     }).pipe(
       Effect.provide(
-        Ledger.layer(directory, policy).pipe(Layer.provide(NodeServices.layer)),
+        Ledger.layer(directory).pipe(Layer.provide(NodeServices.layer)),
       ),
     ),
   );
@@ -59,7 +50,7 @@ const generations = (directory: string) =>
     .filter((name) => name.startsWith("g-"))
     .toSorted();
 
-const addLease = (port: number) => (state: State) =>
+const addLease = (index: number) => (state: State) =>
   Effect.succeed({
     state: {
       ...state,
@@ -67,18 +58,20 @@ const addLease = (port: number) => (state: State) =>
         ...state.leases,
         {
           key: {
-            machine: policy.machine,
-            checkout: CheckoutPath.make(`/c${String(port)}`),
+            machine,
+            checkout: CheckoutPath.make(`/c${String(index)}`),
             env: EnvName.make("dev"),
           },
           project: ProjectName.make("demo"),
-          ports: { [web]: Port.make(port) },
-          store: Option.none(),
+          store: {
+            domain: StoreDomain.make(`pool-${String(index)}.myshopify.com`),
+            config: "shopify.app.toml",
+          },
           acquiredAt: DateTime.makeUnsafe("2026-11-01T09:00:00Z"),
         },
       ],
     },
-    value: port,
+    value: index,
   });
 
 describe("Ledger", () => {
@@ -90,7 +83,7 @@ describe("Ledger", () => {
   it("commits a change and writes nothing for an equal state", async () => {
     await withLedger((ledger, directory) =>
       Effect.gen(function* () {
-        const first = yield* ledger.modify(addLease(4000));
+        const first = yield* ledger.modify(addLease(0));
         const second = yield* ledger.modify((state) =>
           Effect.succeed({ state, value: 0 }),
         );
@@ -106,23 +99,23 @@ describe("Ledger", () => {
       Effect.gen(function* () {
         yield* Effect.all(
           Array.from({ length: 8 }, (_, index) =>
-            ledger.modify(addLease(4000 + index)),
+            ledger.modify(addLease(index)),
           ),
           { concurrency: "unbounded" },
         );
         return yield* ledger.read;
       }),
     );
-    expect(
-      state.leases.map((lease) => lease.ports[web]).toSorted((a, b) => a - b),
-    ).toEqual(Array.from({ length: 8 }, (_, index) => 4000 + index));
+    expect(state.leases.map((lease) => lease.key.checkout).toSorted()).toEqual(
+      Array.from({ length: 8 }, (_, index) => `/c${String(index)}`),
+    );
   });
 
   it("keeps the last 10 generations", async () => {
     const kept = await withLedger((ledger, directory) =>
       Effect.gen(function* () {
         for (let index = 0; index < 12; index++)
-          yield* ledger.modify(addLease(4000 + index));
+          yield* ledger.modify(addLease(index));
         return generations(directory);
       }),
     );
@@ -146,7 +139,7 @@ describe("Ledger", () => {
           }),
         );
         expect((yield* ledger.read).leases).toEqual([]);
-        yield* ledger.modify(addLease(4000));
+        yield* ledger.modify(addLease(0));
         return JSON.parse(
           fs.readFileSync(path.join(directory, "g-2.json"), "utf8"),
         ) as object;
@@ -155,12 +148,50 @@ describe("Ledger", () => {
     expect(Object.keys(written)).toEqual(["leases"]);
   });
 
+  it("drops ports and store-less leases from a generation written while berth leased ports, and commits that on the next write", async () => {
+    const lease = {
+      key: { machine, checkout: "/baton", env: "dev" },
+      project: "baton",
+      ports: {},
+      store: { domain: "pool-00.myshopify.com", config: "shopify.app.toml" },
+      acquiredAt: "2026-11-01T06:32:35.459Z",
+    };
+    const portsOnly = {
+      key: { machine, checkout: "/prelive", env: "dev" },
+      project: "prelive",
+      ports: { web: 4000 },
+      store: null,
+      acquiredAt: "2026-11-02T08:46:08.274Z",
+    };
+    const written = await withLedger((ledger, directory) =>
+      Effect.gen(function* () {
+        fs.mkdirSync(directory, { recursive: true });
+        fs.writeFileSync(
+          path.join(directory, "g-1.json"),
+          JSON.stringify({ leases: [lease, portsOnly] }),
+        );
+        expect(
+          (yield* ledger.read).leases.map((held) => held.key.checkout),
+        ).toEqual(["/baton"]);
+        const unchanged = yield* ledger.modify((state) =>
+          Effect.succeed({ state, value: 0 }),
+        );
+        expect(unchanged.wrote).toBe(true);
+        return JSON.parse(
+          fs.readFileSync(path.join(directory, "g-2.json"), "utf8"),
+        ) as unknown;
+      }),
+    );
+    const { ports: _, ...converged } = lease;
+    expect(written).toEqual({ leases: [converged] });
+  });
+
   it("refuses to commit a state that breaks an invariant", async () => {
     const exit = await withLedger((ledger) =>
       Effect.exit(
         ledger.modify((state) =>
-          addLease(4000)(state).pipe(
-            Effect.flatMap((once) => addLease(4000)(once.state)),
+          addLease(0)(state).pipe(
+            Effect.flatMap((once) => addLease(0)(once.state)),
           ),
         ),
       ),

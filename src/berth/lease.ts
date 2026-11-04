@@ -14,7 +14,6 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import {
-  type Adopt,
   type CheckoutPath,
   EnvName,
   holderOf,
@@ -29,7 +28,6 @@ import {
   sweep,
 } from "./domain.ts";
 import { Ledger } from "./ledger.ts";
-import { isBindable } from "./probe.ts";
 import { type Checkout } from "./settings.ts";
 import * as Shopify from "./shopify.ts";
 
@@ -43,19 +41,6 @@ export class UnknownEnvError extends Schema.TaggedError<UnknownEnvError>()(
   }
 }
 
-/**
- * `--bindable`: a port this lease holds is bound right now. berth never moves
- * a leased port; whatever holds it must stop.
- */
-export class PortBusyError extends Schema.TaggedError<PortBusyError>()(
-  "PortBusyError",
-  { role: Schema.String, port: Schema.Int },
-) {
-  override get message() {
-    return `leased port ${String(this.port)} (${this.role}) is in use; lsof -nP -iTCP:${String(this.port)} -sTCP:LISTEN names the holder`;
-  }
-}
-
 /** `release` of a store this checkout's `shopify app dev` is running on. */
 export class LeaseInUseError extends Schema.TaggedError<LeaseInUseError>()(
   "LeaseInUseError",
@@ -64,12 +49,6 @@ export class LeaseInUseError extends Schema.TaggedError<LeaseInUseError>()(
   override get message() {
     return `shopify app dev (pid ${String(this.pid)}) is running on ${this.store} for ${this.env}; stop it, then release`;
   }
-}
-
-export interface AcquireOptions {
-  /** Also require every leased port to bind now. */
-  readonly bindable: boolean;
-  readonly adopt: Adopt;
 }
 
 /** A lease and whether its checkout is gone, for `list`. */
@@ -153,7 +132,7 @@ export const acquire = Effect.fn("Berth.acquire")(function* (
   policy: Policy,
   checkout: Checkout,
   envName: string,
-  options: AcquireOptions,
+  adopt: Option.Option<StoreDomain>,
 ) {
   const env = yield* declaredEnv(checkout, envName);
   const spec = checkout.manifest.envs[env];
@@ -162,19 +141,14 @@ export const acquire = Effect.fn("Berth.acquire")(function* (
     key: { machine: policy.machine, checkout: checkout.path, env: env },
     project: checkout.manifest.project,
     spec,
-    adopt: options.adopt,
+    adopt,
   };
-  const lease = yield* modifySwept(policy, (state) =>
+  return yield* modifySwept(policy, (state) =>
     Effect.map(
-      reconcile(state, request, { policy, isBindable, now }),
+      reconcile(state, request, { policy, now }),
       ({ state, lease }) => ({ state, value: lease }),
     ),
   );
-  if (options.bindable)
-    for (const [role, port] of Object.entries(lease.ports))
-      if (!(yield* isBindable(port)))
-        return yield* new PortBusyError({ role, port });
-  return lease;
 });
 
 /**
@@ -200,19 +174,15 @@ export const release = Effect.fn("Berth.release")(function* (
         onSome: (env) => lease.key.env === env,
       }),
   );
-  for (const lease of held)
-    if (Option.isSome(lease.store)) {
-      const pid = yield* Shopify.liveSession(
-        checkout.path,
-        lease.store.value.domain,
-      );
-      if (Option.isSome(pid))
-        return yield* new LeaseInUseError({
-          env: lease.key.env,
-          store: lease.store.value.domain,
-          pid: pid.value,
-        });
-    }
+  for (const lease of held) {
+    const pid = yield* Shopify.liveSession(checkout.path, lease.store.domain);
+    if (Option.isSome(pid))
+      return yield* new LeaseInUseError({
+        env: lease.key.env,
+        store: lease.store.domain,
+        pid: pid.value,
+      });
+  }
   yield* modifySwept(policy, (state) =>
     Effect.succeed({
       state: releaseLeases(
@@ -228,7 +198,7 @@ export const release = Effect.fn("Berth.release")(function* (
 /**
  * The checkout's lease for `env` on this machine, if it holds one. Never
  * writes: a command that only stops what a lease started asks this, so a
- * checkout without one is not granted ports and a store on its way out.
+ * checkout without one is not granted a store on its way out.
  */
 export const show = Effect.fn("Berth.show")(function* (
   policy: Policy,

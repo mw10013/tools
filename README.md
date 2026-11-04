@@ -205,12 +205,12 @@ and logs, with each server publishing the port it picked. See
 [docs/bosun.md](docs/bosun.md). Put it on PATH the same way as berth below, with
 `exec vpx /Users/mw/projects/tools/bosun.ts "$@"` in `~/.local/bin/bosun`.
 
-## Ports and dev stores
+## Dev stores
 
-`berth` leases local dev ports, and Shopify dev stores from the fixed list in
-`stores.json`, to each checkout and env, so projects and worktrees on one
-machine never collide. The design is in
-[docs/berth.md](docs/berth.md).
+`berth` leases Shopify dev stores from the fixed list in `stores.json` to each
+checkout and env, so no two Shopify app checkouts on one machine share a store.
+Ports are not berth's: each dev server runs under bosun and picks its own. The
+design is in [docs/berth.md](docs/berth.md).
 
 ### Put berth on PATH
 
@@ -227,18 +227,16 @@ though `vp run` adds a task banner to stdout.
 
 ### Declare what a project needs
 
-Commit a `berth.json` at the project root. Each env lists its port roles and,
-for a Shopify app, the app config its `shopify app dev` runs with. A
+Commit a `berth.json` at the project root. Each env names the app config its
+`shopify app dev` runs with. An env without `store` is rejected. A
 `store.pool` field is accepted and ignored:
 
 ```json
 {
   "project": "baton",
   "envs": {
-    "dev": {
-      "ports": ["web", "graphiql"],
-      "store": { "config": "shopify.app.toml" }
-    }
+    "dev": { "store": { "config": "shopify.app.toml" } },
+    "e2e": { "store": { "config": "shopify.app.e2e.toml" } }
   }
 }
 ```
@@ -246,12 +244,11 @@ for a Shopify app, the app config its `shopify app dev` runs with. A
 ### Lease, release and list
 
 ```sh
-berth acquire dev                       # print this checkout's dev lease as JSON
-berth acquire dev --bindable            # also fail if a leased port is in use
-berth acquire dev --adopt web=3901 --adopt store=mw10013-pool-01
-berth show dev                          # this checkout's dev lease, or null; never creates one
-berth release                           # free this checkout's leases
-berth list                              # every lease and the store pool
+berth acquire dev                         # print this checkout's dev lease as JSON
+berth acquire dev --adopt store=mw10013-pool-01
+berth show dev                            # this checkout's dev lease, or null; never creates one
+berth release                             # free this checkout's leases
+berth list                                # every lease and the store pool
 berth list --json
 ```
 
@@ -261,8 +258,6 @@ rerun writes nothing. A typed failure exits 1 with
 `{ "berth": 1, "error": { "_tag", "message", ... } }` on stdout. A usage error
 exits 2.
 
-- `PortBusyError`: `--bindable` found a leased port in use. The lease does not
-  move. Stop the holder that `lsof -nP -iTCP:<port> -sTCP:LISTEN` names.
 - `StorePoolExhaustedError`: every store in `stores.json` is leased. Release
   a lease, or create a store in Shopify and add its handle to `stores.json`.
   berth never creates or deletes a store.
@@ -282,19 +277,8 @@ in list order.
 ### Machine config
 
 `$XDG_CONFIG_HOME/berth/config.json` (default `~/.config/berth/config.json`)
-sets machine policy. Every field is optional, and the defaults are:
-
-```json
-{
-  "ports": {
-    "first": 4000,
-    "last": 4999,
-    "reserved": [3457, 6969, 9333]
-  }
-}
-```
-
-`machine` defaults to the host name without `.local`. The ledger lives in `$XDG_STATE_HOME/berth/ledger/` (default
+sets machine policy. Its one field, `machine`, is optional and defaults to the
+host name without `.local`. The ledger lives in `$XDG_STATE_HOME/berth/ledger/` (default
 `~/.local/state/berth/ledger/`). To try berth without touching the real
 ledger, set both variables to temporary directories.
 

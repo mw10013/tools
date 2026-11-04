@@ -12,7 +12,16 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { type CheckoutPath, type StoreDomain } from "./domain.ts";
-import { isAlive } from "./probe.ts";
+
+/** True when a process with this pid exists, whoever owns it. */
+const isAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
 
 /** The part of `.shopify/dev/app-dev-*.json` berth reads. */
 const DevSession = Schema.fromJsonString(

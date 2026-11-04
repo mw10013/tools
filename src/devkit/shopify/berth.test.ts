@@ -9,7 +9,6 @@ const grantedLease = {
   checkout: "/Users/mw/projects/baton",
   env: "e2e",
   machine: "mw-mbp",
-  ports: {},
   store: {
     domain: "mw10013-pool-01.myshopify.com",
     config: "shopify.app.e2e.toml",
