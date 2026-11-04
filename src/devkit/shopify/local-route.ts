@@ -12,7 +12,9 @@ const routed = new WeakSet<BrowserContext>();
  * 200 in flight is a 429 (developers.cloudflare.com/tunnel/get-started/quick-tunnels). The page
  * keeps the tunnel's URL, so its origin and cookies do not change, and the Host and forwarding
  * headers stay the tunnel's, so the app builds its URLs as it would behind the tunnel. Redirects
- * reach the browser unfollowed. Shopify CLI's own `/extensions` path and WebSockets still go
+ * reach the browser unfollowed. A request is retried once on ECONNRESET, as Chrome retries one sent
+ * on a keep-alive connection the server just closed, and a request that still fails fails in the
+ * page instead of throwing in the test. Shopify CLI's own `/extensions` path and WebSockets still go
  * through the tunnel: the CLI does not tell the app its proxy's port, so only the app's own
  * server is reached directly.
  */
@@ -30,17 +32,22 @@ export const routeAppToLocal = async (
     async (route) => {
       const request = route.request();
       const url = new URL(request.url());
-      const response = await route.fetch({
-        url: `${local}${url.pathname}${url.search}`,
-        headers: {
-          ...request.headers(),
-          host: tunnel.host,
-          "x-forwarded-host": tunnel.host,
-          "x-forwarded-proto": "https",
-        },
-        maxRedirects: 0,
-      });
-      await route.fulfill({ response });
+      const response = await route
+        .fetch({
+          url: `${local}${url.pathname}${url.search}`,
+          headers: {
+            ...request.headers(),
+            host: tunnel.host,
+            "x-forwarded-host": tunnel.host,
+            "x-forwarded-proto": "https",
+          },
+          maxRedirects: 0,
+          maxRetries: 1,
+        })
+        .catch(() => undefined);
+      await (response === undefined
+        ? route.abort("connectionfailed")
+        : route.fulfill({ response }));
     },
   );
 };
