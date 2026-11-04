@@ -33,7 +33,10 @@ describe("StoreName", () => {
     "mw10013-staging-shop-100",
     "mw10013-pool-shop-00",
     "mw10013-pool-0",
+    "mw10013-pool-100",
+    "mw10013-e2e-shop-00",
     "pool-00",
+    "mw10013-pool-00.myshopify.com",
   ])
     it(`rejects ${name}`, () => {
       assert.isTrue(Option.isNone(decode(name)));
