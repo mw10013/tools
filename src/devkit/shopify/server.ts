@@ -49,14 +49,9 @@ export const TUNNEL_READY_TIMEOUT = Duration.seconds(90);
  */
 export const tunnelServes = (status: number) => status !== 530;
 
-/** Which half of {@link tunnelReady} failed: the public DNS lookup, or `/` through the tunnel. */
 export const TunnelPhase = Schema.Literals(["resolve", "answer"]);
 export type TunnelPhase = typeof TunnelPhase.Type;
 
-/**
- * What {@link TunnelError} says: which half failed, after how long, and what was seen last (a
- * lookup error code, or the HTTP status or fetch error through the tunnel).
- */
 export const tunnelErrorMessage = (failure: {
   readonly phase: TunnelPhase;
   readonly url: string;
@@ -84,7 +79,6 @@ const describeCause = (cause: unknown) =>
       : cause.message
     : String(cause);
 
-/** One lookup of `hostname` on {@link PUBLIC_RESOLVERS}; fails with what was seen. */
 const resolvePublic = (hostname: string) =>
   Effect.tryPromise({
     try: () => {
@@ -95,7 +89,6 @@ const resolvePublic = (hostname: string) =>
     catch: describeCause,
   });
 
-/** One `GET /` through the tunnel; succeeds with the status, fails with what was seen. */
 const fetchThrough = (url: string) =>
   Effect.tryPromise({
     try: () =>
@@ -106,7 +99,6 @@ const fetchThrough = (url: string) =>
     catch: describeCause,
   }).pipe(Effect.map((response) => response.status));
 
-/** What a single look at a tunnel found; see {@link tunnelState}. */
 export const TunnelState = Schema.Literals([
   "ready",
   "not resolving",
@@ -114,10 +106,7 @@ export const TunnelState = Schema.Literals([
 ]);
 export type TunnelState = typeof TunnelState.Type;
 
-/**
- * A single look at the tunnel, {@link tunnelReady}'s two halves once each without waiting, for a
- * status report: the system resolver is asked (by `fetch`) only once public DNS has the name.
- */
+/** The system resolver is asked (by `fetch`) only once public DNS has the name; see {@link PUBLIC_RESOLVERS}. */
 export const tunnelState = Effect.fn("Server.tunnelState")(function* (
   url: string,
 ) {
@@ -129,11 +118,6 @@ export const tunnelState = Effect.fn("Server.tunnelState")(function* (
     : ("not answering" satisfies TunnelState);
 });
 
-/**
- * Waits until the tunnel serves: first until {@link PUBLIC_RESOLVERS} resolve its hostname, then
- * until `/` through it answers with anything {@link tunnelServes} accepts, polling each every
- * second within {@link TUNNEL_READY_TIMEOUT} for both. Succeeds with the time it took.
- */
 export const tunnelReady = Effect.fn("Server.tunnelReady")(function* (
   url: string,
   timeout: Duration.Duration = TUNNEL_READY_TIMEOUT,
@@ -182,8 +166,6 @@ export const tunnelReady = Effect.fn("Server.tunnelReady")(function* (
   return yield* elapsed;
 });
 
-/** This checkout's root, where both servers run and where every path below is relative to. */
-
 export class ServerError extends Schema.TaggedError<ServerError>()(
   "ServerError",
   {
@@ -209,7 +191,6 @@ const notRunning = (environment: WebEnvironment) =>
     message: `the ${environment} server is not running: ${START[environment]}`,
   });
 
-/** An environment's server: its lease's store and app config, and its stage. */
 export interface Server extends Berth.Lease {
   readonly environment: WebEnvironment;
   readonly stage: string;
@@ -237,7 +218,6 @@ const BosunState = Schema.Literals([
   "orphaned",
 ]);
 
-/** The fields of bosun's status JSON that the app reads. */
 const BosunStatus = Schema.Struct({
   state: BosunState,
   port: Schema.NullOr(Schema.Int),
@@ -255,7 +235,6 @@ const decodeBosunOutput = Schema.decodeUnknownResult(
   Schema.fromJsonString(Schema.Union([BosunStatus, BosunFailure])),
 );
 
-/** bosun's stdout, a status or a typed failure; anything else is a failure naming the command. */
 export const bosunOutput = (args: readonly string[], stdout: string) => {
   const output = decodeBosunOutput(stdout);
   if (Result.isFailure(output))
@@ -291,7 +270,6 @@ const bosun = Effect.fn("Server.bosun")(function* (args: readonly string[]) {
 const serverStatus = (environment: WebEnvironment) =>
   bosun(["status", environment]);
 
-/** A server that answers: its local port, its tunnel, and when it started. */
 export interface RunningServer {
   readonly port: number;
   readonly url: Option.Option<string>;
@@ -299,7 +277,6 @@ export interface RunningServer {
   readonly log: string;
 }
 
-/** The {@link RunningServer} a status describes, or none when the server does not answer. */
 export const runningOf = (status: BosunStatus): Option.Option<RunningServer> =>
   status.state === "running" && status.port !== null
     ? Option.some({
@@ -313,7 +290,6 @@ export const runningOf = (status: BosunStatus): Option.Option<RunningServer> =>
       })
     : Option.none();
 
-/** The environment's server as bosun sees it; fails with the command that starts it otherwise. */
 export const runningServer = Effect.fn("Server.runningServer")(function* (
   environment: WebEnvironment,
 ) {
@@ -322,7 +298,7 @@ export const runningServer = Effect.fn("Server.runningServer")(function* (
   ).pipe(Effect.mapError(() => notRunning(environment)));
 });
 
-/** {@link runningServer} for configs that cannot run an effect (Playwright's); throws its message. */
+/** For configs that cannot run an effect (Playwright's). */
 export const runningServerSync = (
   environment: WebEnvironment,
 ): RunningServer => {
@@ -352,8 +328,7 @@ export const runningServerSync = (
 const APP_CONFIG = "shopify.app.toml";
 
 /**
- * Starts the server, or adopts the one running, and waits until it answers. Without `BACKEND_PORT`,
- * the CLI picks the web port itself. GraphiQL is off: its server prefers port 3457, so two servers
+ * Without `BACKEND_PORT`, the CLI picks the web port itself. GraphiQL is off: its server prefers port 3457, so two servers
  * starting at once would both take it and the second would exit with `EADDRINUSE`.
  */
 export const startServer = Effect.fn("Server.startServer")(function* (
@@ -409,7 +384,6 @@ export const stopServer = Effect.fn("Server.stopServer")(function* (
     return yield* fail(`bosun stop ${environment} exited ${String(code)}`);
 });
 
-/** One line per step with its duration; a failing step says so before its error. */
 export const step = Effect.fn("Server.step")(function* <A, E, R>(
   label: string,
   effect: Effect.Effect<A, E, R>,
@@ -437,7 +411,6 @@ const ClientIdLine = Schema.TemplateLiteralParser([
 ]);
 const decodeClientIdLine = Schema.decodeUnknownOption(ClientIdLine);
 
-/** The app's client id, from the `client_id = "…"` line of `shopify.app.toml`. */
 export const loadClientId = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const toml = yield* fs
@@ -454,7 +427,6 @@ export const loadClientId = Effect.gen(function* () {
   );
 });
 
-/** The app inside the store's admin, the URL a person opens to see the embedded App Home. */
 export const adminUrl = (store: string, clientId: string) =>
   `https://admin.shopify.com/store/${store}/apps/${clientId}`;
 
@@ -471,10 +443,6 @@ export const describeRunning = Effect.fn("Server.describeRunning")(function* (
   ].join("\n");
 });
 
-/**
- * What `dev:status` and `e2e:status` report: bosun's status, the stage and store, and one look at
- * the tunnel ({@link tunnelState}). Read-only.
- */
 export const statusReport = Effect.fn("Server.statusReport")(function* (
   server: Server,
 ) {

@@ -10,10 +10,8 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-/** Runs kept per kind. */
 const KEPT = 30;
 
-/** `e2e`: Playwright. `test`: Vitest. */
 export type TestRunKind = "e2e" | "test";
 
 const VARIABLE: Record<TestRunKind, string> = {

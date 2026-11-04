@@ -1,11 +1,3 @@
-/**
- * What berth reads from disk besides its ledger: the checkout's `berth.json`,
- * the machine's `config.json`, the store pool in `stores.json`, and where the
- * ledger lives. Raw JSON is decoded into domain types here and goes no
- * further.
- *
- * @module
- */
 import * as os from "node:os";
 
 import * as Config from "effect/Config";
@@ -24,7 +16,6 @@ import {
   StoreDomain,
 } from "./domain.ts";
 
-/** No `berth.json` in the directory or any parent. */
 export class ManifestNotFoundError extends Schema.TaggedError<ManifestNotFoundError>()(
   "ManifestNotFoundError",
   { from: Schema.String },
@@ -34,7 +25,6 @@ export class ManifestNotFoundError extends Schema.TaggedError<ManifestNotFoundEr
   }
 }
 
-/** A `berth.json`, `config.json` or `stores.json` that does not decode. */
 export class SettingsInvalidError extends Schema.TaggedError<SettingsInvalidError>()(
   "SettingsInvalidError",
   { file: Schema.String, issue: Schema.String },
@@ -44,7 +34,6 @@ export class SettingsInvalidError extends Schema.TaggedError<SettingsInvalidErro
   }
 }
 
-/** A checkout and what its manifest declares. */
 export interface Checkout {
   readonly path: CheckoutPath;
   readonly manifest: Manifest;
@@ -63,7 +52,6 @@ const decodeFile = <
     ),
   );
 
-/** The nearest directory at or above `from`'s real path holding a `berth.json`. */
 export const findCheckout = Effect.fn("Settings.findCheckout")(function* (
   from: string,
 ) {
@@ -87,7 +75,6 @@ export const findCheckout = Effect.fn("Settings.findCheckout")(function* (
   }
 });
 
-/** `stores.json`: the handles of the stores berth leases, `<handle>.myshopify.com`. */
 const StoresFile = Schema.Array(
   Schema.String.pipe(
     Schema.decodeTo(
@@ -100,7 +87,6 @@ const StoresFile = Schema.Array(
   ),
 );
 
-/** The store pool, from `stores.json` at the root of the repository holding berth. */
 const loadStores = Effect.fn("Settings.loadStores")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -120,7 +106,6 @@ const xdgDirectory = (variable: string, fallback: string) =>
     return yield* Config.String(variable).pipe(Config.withDefault(fallback));
   }).pipe(Effect.orDie);
 
-/** `$XDG_STATE_HOME/berth/ledger`, default `~/.local/state/berth/ledger`. */
 export const ledgerDirectory = Effect.gen(function* () {
   const path = yield* Path.Path;
   const state = yield* xdgDirectory(
@@ -130,12 +115,6 @@ export const ledgerDirectory = Effect.gen(function* () {
   return path.join(state, "berth", "ledger");
 });
 
-/**
- * The machine's policy: the machine name from `$XDG_CONFIG_HOME/berth/config.json`
- * (default `~/.config/berth/`) or the host name without `.local`, and the store
- * pool. A missing file is the defaults; an invalid one fails rather than
- * guessing.
- */
 export const loadPolicy = Effect.fn("Settings.loadPolicy")(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;

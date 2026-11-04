@@ -1,15 +1,9 @@
-/**
- * The programs wt runs: git, gh, vp and berth.
- *
- * @module
- */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-/** A program wt ran exited nonzero or could not start. */
 export class CommandFailedError extends Schema.TaggedError<CommandFailedError>()(
   "CommandFailedError",
   { command: Schema.String, directory: Schema.String, detail: Schema.String },
@@ -28,7 +22,6 @@ export interface Output {
 const lastLine = (text: string) =>
   text.trim().split("\n").at(-1) ?? "no output";
 
-/** Runs `program args` in `directory` and collects its output. */
 export const capture = Effect.fn("Process.capture")(function* (
   directory: string,
   program: string,
@@ -60,7 +53,6 @@ export const capture = Effect.fn("Process.capture")(function* (
   ).pipe(Effect.mapError((error) => fail(error.message)));
 });
 
-/** {@link capture}, failing unless the program exits 0; its stdout. */
 export const run = Effect.fn("Process.run")(function* (
   directory: string,
   program: string,
@@ -76,10 +68,7 @@ export const run = Effect.fn("Process.run")(function* (
   return output.stdout;
 });
 
-/**
- * Runs `program args` in `directory` with its output shown on wt's stderr as
- * it comes, keeping wt's stdout for its JSON; fails unless it exits 0.
- */
+/** Streams the program's output to stderr, keeping stdout for wt's JSON. */
 export const stream = Effect.fn("Process.stream")(function* (
   directory: string,
   program: string,

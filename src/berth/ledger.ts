@@ -24,16 +24,12 @@ import * as Schema from "effect/Schema";
 
 import { checkState, EMPTY_STATE, State } from "./domain.ts";
 
-/** Committed generations kept on disk after a write. */
 const KEPT_GENERATIONS = 10;
-/** Lost compare-and-swaps retried before {@link LedgerContendedError}. */
 const COMMIT_ATTEMPTS = 50;
-/** A temp file older than this is a crashed writer's debris. */
 const TEMP_FILE_LIFETIME = Duration.minutes(1);
 
 const GENERATION = /^g-(\d+)\.json$/u;
 const StateJson = Schema.fromJsonString(State);
-/** Every retry lost the race: something is writing the ledger in a loop. */
 export class LedgerContendedError extends Schema.TaggedError<LedgerContendedError>()(
   "LedgerContendedError",
   { attempts: Schema.Int },
@@ -43,26 +39,17 @@ export class LedgerContendedError extends Schema.TaggedError<LedgerContendedErro
   }
 }
 
-/** The outcome of one {@link Ledger} `modify`. */
 export interface Committed<A> {
   readonly state: State;
   readonly value: A;
-  /** False when the transition returned an equal state and nothing was written. */
   readonly wrote: boolean;
 }
 
 export class Ledger extends Context.Service<
   Ledger,
   {
-    /** The current state; the empty state before the first write. */
     readonly read: Effect.Effect<State>;
-    /**
-     * Runs `transition` on the current state and commits its output as the
-     * next generation. On a lost race it re-reads and re-runs `transition`, so
-     * a transition may only read. An output whose encoding equals the
-     * current file writes nothing. A transition failure aborts without
-     * writing.
-     */
+    /** On a lost race `transition` re-runs on a fresh read, so it must not write. */
     readonly modify: <A, E, R>(
       transition: (
         state: State,
@@ -70,7 +57,6 @@ export class Ledger extends Context.Service<
     ) => Effect.Effect<Committed<A>, E | LedgerContendedError, R>;
   }
 >()("app/Ledger") {
-  /** Over `directory`; {@link checkState} checks every state read and written. */
   static readonly layer = (directory: string) =>
     Layer.effect(
       Ledger,
@@ -101,10 +87,7 @@ export class Ledger extends Context.Service<
               ),
           });
 
-        /**
-         * The highest generation, its state and its text as stored; a file
-         * pruned mid-read re-lists.
-         */
+        // A concurrent prune can delete the listed file before it is read; re-list.
         const current: Effect.Effect<{
           readonly generation: number;
           readonly state: State;
@@ -165,7 +148,6 @@ export class Ledger extends Context.Service<
           }
         }, Effect.orDie);
 
-        /** Writes `text` as generation `next`; false when another writer took it. */
         const commit = Effect.fn("Ledger.commit")(function* (
           next: number,
           text: string,

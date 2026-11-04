@@ -9,7 +9,6 @@ import path from "node:path";
 
 import * as Schema from "effect/Schema";
 
-/** The app's checkout root. */
 export const ROOT = path.resolve(import.meta.dirname, "../../..");
 
 /** `package.json`'s `name`: the app's Alchemy stack and the prefix of its deployed Workers. */

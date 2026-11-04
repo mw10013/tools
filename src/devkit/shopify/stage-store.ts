@@ -21,19 +21,12 @@ import { APP_NAME, ROOT } from "#devkit/core/app.ts";
 import { type Server, ServerError, step, stopServer } from "./server.ts";
 import type { WebEnvironment } from "./web.ts";
 
-/** The file, under the checkout's root, holding the store `environment`'s stage was set up for. */
 export const stageStoreFile = (environment: WebEnvironment) =>
   `.state/${environment}.store`;
 
-/** The local Alchemy state of `stage`, under the checkout's root; absent until it first starts. */
 export const stageStateDirectory = (stage: string) =>
   `.alchemy/state/${APP_NAME}/${stage}`;
 
-/**
- * Why a stage must be destroyed before its server starts on `store`, or none. A stage with no
- * local state has nothing to keep; one with state but no record predates the record, so the store
- * it was set up for is unknown.
- */
 export const staleStageReason = (
   stage: { readonly exists: boolean; readonly store: Option.Option<string> },
   store: string,
@@ -48,7 +41,6 @@ export const staleStageReason = (
   });
 };
 
-/** The store `server`'s stage is recorded as set up for, if any. */
 export const recordedStore = (server: Server) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -60,7 +52,6 @@ export const recordedStore = (server: Server) =>
       );
   });
 
-/** Records `server`'s lease store as the one its stage is set up for. */
 export const recordStore = (server: Server) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -91,10 +82,6 @@ export const destroyStage = (server: Server) =>
       });
   });
 
-/**
- * Stops the server and destroys its stage when the stage was set up for another store than the
- * lease's ({@link staleStageReason}), and removes the record.
- */
 export const resetStaleStage = (server: Server) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;

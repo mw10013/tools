@@ -1,14 +1,6 @@
 /**
- * Making and removing worktrees. wt knows git and two optional repo hooks:
- * a repo opts into more by having it. `new` and `init` share the main
- * checkout's untracked files ({@link share}); with a `package.json`, `new`
- * runs `vp install`, then both run the `worktree:init` script when there is
- * one; `rm` runs
- * the `worktree:teardown` script when there is one, then `berth release`
- * when the checkout has a `berth.json`.
- *
  * Worktrees live at `~/.t3/worktrees/<repo>/<name>`, the layout T3 Code
- * lists, and the directory and the branch share the name.
+ * lists.
  *
  * @module
  */
@@ -26,7 +18,6 @@ import { firstFree, fromWords, NAME_MAX, type WorktreeName } from "./name.ts";
 import { run, stream } from "./process.ts";
 import { share } from "./share.ts";
 
-/** The words spell no name. */
 export class InvalidNameError extends Schema.TaggedError<InvalidNameError>()(
   "InvalidNameError",
   { words: Schema.String },
@@ -36,7 +27,6 @@ export class InvalidNameError extends Schema.TaggedError<InvalidNameError>()(
   }
 }
 
-/** `--exact` and the name's branch or directory exists. */
 export class NameTakenError extends Schema.TaggedError<NameTakenError>()(
   "NameTakenError",
   { name: Schema.String },
@@ -46,7 +36,6 @@ export class NameTakenError extends Schema.TaggedError<NameTakenError>()(
   }
 }
 
-/** No worktree of the repository matches. */
 export class WorktreeNotFoundError extends Schema.TaggedError<WorktreeNotFoundError>()(
   "WorktreeNotFoundError",
   { target: Schema.String },
@@ -56,7 +45,6 @@ export class WorktreeNotFoundError extends Schema.TaggedError<WorktreeNotFoundEr
   }
 }
 
-/** The main checkout is never removed. */
 export class MainCheckoutError extends Schema.TaggedError<MainCheckoutError>()(
   "MainCheckoutError",
   { path: Schema.String },
@@ -66,7 +54,6 @@ export class MainCheckoutError extends Schema.TaggedError<MainCheckoutError>()(
   }
 }
 
-/** The worktree has changes that removing it would lose. */
 export class UncommittedChangesError extends Schema.TaggedError<UncommittedChangesError>()(
   "UncommittedChangesError",
   { path: Schema.String },
@@ -76,7 +63,6 @@ export class UncommittedChangesError extends Schema.TaggedError<UncommittedChang
   }
 }
 
-/** The branch has commits that are not on the base and no merged PR at its tip. */
 export class UnlandedWorkError extends Schema.TaggedError<UnlandedWorkError>()(
   "UnlandedWorkError",
   { branch: Schema.String, base: Schema.String, commits: Schema.Int },
@@ -86,7 +72,6 @@ export class UnlandedWorkError extends Schema.TaggedError<UnlandedWorkError>()(
   }
 }
 
-/** `$WT_ROOT`, default `~/.t3/worktrees`. */
 const worktreesRoot = Effect.gen(function* () {
   const path = yield* Path.Path;
   return process.env.WT_ROOT ?? path.join(os.homedir(), ".t3", "worktrees");
@@ -98,7 +83,6 @@ const PackageScripts = Schema.fromJsonString(
   }),
 );
 
-/** `package.json`'s scripts in `directory`; `None` without a `package.json`. */
 const packageScripts = Effect.fn("Worktree.packageScripts")(function* (
   directory: string,
 ) {
@@ -128,10 +112,6 @@ export interface Created {
   readonly steps: ReadonlyArray<string>;
 }
 
-/**
- * A new worktree and branch named from `words`, started at `from` or the
- * repository's base, set up by its hooks.
- */
 export const create = Effect.fn("Worktree.create")(function* (
   directory: string,
   words: ReadonlyArray<string>,
@@ -204,10 +184,6 @@ export interface Initialized {
   readonly steps: ReadonlyArray<string>;
 }
 
-/**
- * Sets up an existing linked worktree again, as `new` did after `vp install`:
- * run it when the main checkout's `.env` or shared files change.
- */
 export const init = Effect.fn("Worktree.init")(function* (
   directory: string,
   target: Option.Option<string>,
@@ -228,10 +204,6 @@ export const init = Effect.fn("Worktree.init")(function* (
   return { path: worktree.path, steps } satisfies Initialized;
 });
 
-/**
- * The worktree `target` names: a directory name or a branch, else a path,
- * relative to `directory`, to the worktree or inside it.
- */
 const find = Effect.fn("Worktree.find")(function* (
   repository: Git.Repository,
   directory: string,
@@ -269,11 +241,6 @@ export interface Removed {
   readonly steps: ReadonlyArray<string>;
 }
 
-/**
- * Removes a worktree and its branch, once its work is safe: no uncommitted
- * changes, and every commit on the base or in a merged PR at the branch's
- * tip. `force` skips the second check, never the first.
- */
 export const remove = Effect.fn("Worktree.remove")(function* (
   directory: string,
   target: Option.Option<string>,

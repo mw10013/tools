@@ -22,13 +22,10 @@ declare global {
 export const PerDeveloper = Schema.Literals(["dev", "test", "e2e"]);
 export type PerDeveloper = typeof PerDeveloper.Type;
 
-/**
- * The environments deployed to Cloudflare, each a single stage named after the environment.
- */
 export const Deployed = Schema.Literals(["staging", "production"]);
 export type Deployed = typeof Deployed.Type;
 
-/** Only disposable deployed data may be destroyed by the reset command. Production is excluded. */
+/** Only disposable deployed data may be destroyed by the reset command. */
 export const ResettableDeployed = Schema.Literals(["staging"]);
 export type ResettableDeployed = typeof ResettableDeployed.Type;
 
@@ -42,8 +39,7 @@ export type Environment = typeof Environment.Type;
 const User = Schema.String.check(Schema.isPattern(/^[a-z0-9]+$/u));
 
 /**
- * A per-developer stage, `<environment>-<user>`: `dev-mw`, the same in every checkout. A
- * per-developer stage's state and data live in its checkout's `.alchemy/`, so checkouts never
+ * A per-developer stage's state and data live in its checkout's `.alchemy/`, so checkouts never
  * share one. Dashes, because Alchemy turns every other separator into `-` in physical names, so
  * the stage reads the same in the CLI, state, logs and Cloudflare.
  */
@@ -62,15 +58,11 @@ export const PerDeveloperStage = Schema.TemplateLiteralParser([
 );
 export type PerDeveloperStage = typeof PerDeveloperStage.Type;
 
-/** The last part of a {@link TestFileStage}: lowercase letters and digits, starting with a letter. */
 const TestFileSuffix = Schema.String.check(
   Schema.isPattern(/^[a-z][a-z0-9]*$/u),
 );
 
-/**
- * One integ file's own `test` stage, `test-<user>-<suffix>`: `test-mw-shopactor`. Each file
- * deploys and destroys its own, so files run side by side without sharing state, ports or data.
- */
+/** Each integ file deploys and destroys its own, so files run side by side without sharing state, ports or data. */
 export const TestFileStage = Schema.TemplateLiteralParser([
   Schema.Literal("test"),
   "-",
@@ -105,10 +97,9 @@ const decodeTestFileStage = Schema.decodeUnknownOption(TestFileStage);
 const isDeployed = Schema.is(Deployed);
 
 /**
- * The environment a stage belongs to: a {@link Deployed} stage is its own, a per-developer
- * stage's is its first part, and a {@link TestFileStage} is `test`. Any other stage dies rather
- * than falling back: an environment not listed in {@link Environment} is one nobody has thought
- * through (its seed, its state store, its policy), a misconfiguration no caller can act on.
+ * An unknown stage dies rather than falling back: an environment not listed in {@link Environment}
+ * is one nobody has thought through (its seed, its state store, its policy), a misconfiguration no
+ * caller can act on.
  */
 export const environmentOf = (stage: string): Effect.Effect<Environment> =>
   isDeployed(stage)

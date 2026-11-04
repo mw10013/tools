@@ -72,13 +72,9 @@ export const closeDevConsole = async (page: Page): Promise<void> => {
 };
 
 /**
- * Waits until the embedded app is safe to interact with, including after a CLI navigation.
- *
- * One wait, no reload: a cold load through the tunnel requests some 210 unbundled modules and
- * hydrates in about 3.4 s (5 s at the 90th percentile), so a frame that is not hydrated after 15 s is
- * stuck on a request that will never finish, and a reload only hides which one. The stall once
- * absorbed here was Alchemy's dev proxy cutting large `Connection: close` responses short, which
- * the Shopify CLI's proxy then held open forever; `patches/@alchemy.run__cloudflare-runtime*` fixes it.
+ * One wait, no reload: a cold load through the tunnel hydrates in about 5 s at the 90th
+ * percentile, so a frame that is not hydrated after 15 s is stuck on a request that will never
+ * finish, and a reload only hides which one.
  *
  * A store with no plan is sent to Shopify's plan selection page
  * (`/store/<store>/charges/<app>/pricing_plans`), so a timed-out wait there fails naming the fix.

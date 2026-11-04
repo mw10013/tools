@@ -1,11 +1,3 @@
-/**
- * berth's operations: `acquire`, `release`, `show` and `list`. Each gathers
- * facts, runs domain transitions through the ledger's compare-and-swap, and
- * reports what it swept. Every write first sweeps this machine's leases whose
- * checkout is gone.
- *
- * @module
- */
 import * as Console from "effect/Console";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -31,7 +23,6 @@ import { Ledger } from "./ledger.ts";
 import { type Checkout } from "./settings.ts";
 import * as Shopify from "./shopify.ts";
 
-/** The env is not in the checkout's `berth.json`. */
 export class UnknownEnvError extends Schema.TaggedError<UnknownEnvError>()(
   "UnknownEnvError",
   { env: Schema.String, declared: Schema.Array(Schema.String) },
@@ -41,7 +32,6 @@ export class UnknownEnvError extends Schema.TaggedError<UnknownEnvError>()(
   }
 }
 
-/** `release` of a store this checkout's `shopify app dev` is running on. */
 export class LeaseInUseError extends Schema.TaggedError<LeaseInUseError>()(
   "LeaseInUseError",
   { env: Schema.String, store: Schema.String, pid: Schema.Int },
@@ -51,19 +41,16 @@ export class LeaseInUseError extends Schema.TaggedError<LeaseInUseError>()(
   }
 }
 
-/** A lease and whether its checkout is gone, for `list`. */
 export interface Holding {
   readonly lease: Lease;
   readonly stale: boolean;
 }
 
-/** A store in `stores.json` and the lease holding it, for `list`. */
 export interface PooledStore {
   readonly domain: StoreDomain;
   readonly holder: Option.Option<Lease>;
 }
 
-/** This machine's checkouts on the ledger whose directory is gone. */
 const goneCheckouts = Effect.fn("Berth.goneCheckouts")(function* (
   policy: Policy,
   state: State,
@@ -79,7 +66,6 @@ const goneCheckouts = Effect.fn("Berth.goneCheckouts")(function* (
   return gone;
 });
 
-/** Sweeps stale leases inside `transition`'s write and reports them. */
 const modifySwept = Effect.fn("Berth.modifySwept")(function* <A, E>(
   policy: Policy,
   transition: (
@@ -106,7 +92,6 @@ const modifySwept = Effect.fn("Berth.modifySwept")(function* <A, E>(
   return committed.value.value;
 });
 
-/** `envName` when `berth.json` declares it. */
 const declaredEnv = (checkout: Checkout, envName: string) =>
   Option.match(
     Schema.decodeUnknownOption(EnvName)(envName).pipe(
@@ -124,10 +109,6 @@ const declaredEnv = (checkout: Checkout, envName: string) =>
     },
   );
 
-/**
- * Ensures the lease of (checkout, env) matches the manifest and returns it. A
- * matching lease returns without a ledger write.
- */
 export const acquire = Effect.fn("Berth.acquire")(function* (
   policy: Policy,
   checkout: Checkout,
@@ -152,13 +133,10 @@ export const acquire = Effect.fn("Berth.acquire")(function* (
 });
 
 /**
- * Ends the checkout's lease for `env`, or every env it holds when none. An env
- * missing from `berth.json` is still releasable. Releasing nothing succeeds.
- *
- * It refuses while this checkout's `shopify app dev` runs on a leased store,
- * so a store is never leased to a second checkout while the first still runs
- * on it. The store's dev preview stays: the next holder's `shopify app dev`
- * replaces it.
+ * An env no longer in `berth.json` is still releasable. Refuses while this checkout's
+ * `shopify app dev` runs on a leased store, so a store is never leased to a second checkout
+ * while the first still runs on it. The store's dev preview stays: the next holder's
+ * `shopify app dev` replaces it.
  */
 export const release = Effect.fn("Berth.release")(function* (
   policy: Policy,
@@ -196,8 +174,7 @@ export const release = Effect.fn("Berth.release")(function* (
 });
 
 /**
- * The checkout's lease for `env` on this machine, if it holds one. Never
- * writes: a command that only stops what a lease started asks this, so a
+ * Never writes: a command that only stops what a lease started asks this, so a
  * checkout without one is not granted a store on its way out.
  */
 export const show = Effect.fn("Berth.show")(function* (
@@ -214,13 +191,11 @@ export const show = Effect.fn("Berth.show")(function* (
   );
 });
 
-/** What `list` shows. */
 export interface Listing {
   readonly holdings: ReadonlyArray<Holding>;
   readonly stores: ReadonlyArray<PooledStore>;
 }
 
-/** Every lease on the ledger, all projects and machines, and the pool. Never writes. */
 export const list = Effect.fn("Berth.list")(function* (
   policy: Policy,
 ): Effect.fn.Return<Listing, never, Ledger | FileSystem.FileSystem> {

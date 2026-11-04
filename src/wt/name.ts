@@ -16,11 +16,6 @@ export const WorktreeName = Schema.String.check(
 ).pipe(Schema.brand("WorktreeName"));
 export type WorktreeName = typeof WorktreeName.Type;
 
-/**
- * The name the caller's words spell: lowercase, each run of other characters
- * one hyphen, cut at the last hyphen that fits. `None` when no letter or
- * digit is left.
- */
 export const fromWords = (
   words: ReadonlyArray<string>,
 ): Option.Option<WorktreeName> => {
@@ -40,10 +35,6 @@ export const fromWords = (
   return Schema.decodeUnknownOption(WorktreeName)(cut.replace(/-+$/u, ""));
 };
 
-/**
- * `name` when it is free, else the first free `name-2`, `name-3`, …, each
- * shortened so the suffix fits.
- */
 export const firstFree = (
   name: WorktreeName,
   taken: (candidate: string) => boolean,

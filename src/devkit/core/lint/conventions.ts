@@ -3,10 +3,7 @@ import { definePlugin, defineRule } from "vite-plus/lint/plugins";
 const isEffectModule = (source: string) =>
   source === "effect" || source.startsWith("effect/");
 
-/**
- * An Effect module is imported as a namespace. `no-restricted-imports`
- * cannot say this: its import-name options also reject the namespace import.
- */
+// `no-restricted-imports` cannot express this: its import-name options also reject the namespace import.
 const effectNamespaceImport = defineRule({
   meta: {
     type: "problem",

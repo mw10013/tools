@@ -419,7 +419,6 @@ const waitAnswering = Effect.fn("Bosun.waitAnswering")(function* (
     const now = yield* status(root, name);
     if (now.state === "running") return now;
     if (now.state !== "starting" || now.run !== runId) {
-      // The runner writes the command's last lines, then its exit marker.
       yield* Effect.sleep("1 second");
       return yield* new ServerExitedError({
         name,

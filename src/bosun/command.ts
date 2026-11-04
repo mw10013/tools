@@ -4,9 +4,6 @@
  * typed failure prints `{ bosun: 1, error: { _tag, message } }` and exits 1.
  * `status` exits 3 when the server is not running.
  *
- * Every command works on the checkout around the working directory: the
- * root of its git worktree.
- *
  * @module
  */
 import * as Console from "effect/Console";

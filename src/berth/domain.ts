@@ -1,10 +1,7 @@
 /**
- * berth's concepts and every rule over them. Nothing here touches the file
- * system or the clock: the shell gathers facts (which checkouts exist, the
- * time) and hands them in.
- *
- * The one stored value is {@link State}. Who holds a store and which leases
- * are stale are derived from it, never stored.
+ * Nothing here touches the file system or the clock: the shell gathers facts
+ * and hands them in. The one stored value is {@link State}; who holds a store
+ * and which leases are stale are derived from it, never stored.
  *
  * @module
  */
@@ -12,45 +9,35 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-/** A project's name as its `berth.json` declares it. */
 export const ProjectName = Schema.String.check(
   Schema.isPattern(/^[a-z0-9][a-z0-9-]*$/u),
 ).pipe(Schema.brand("ProjectName"));
 export type ProjectName = typeof ProjectName.Type;
 
-/** An environment a project declares: `dev`, `e2e`. */
 export const EnvName = Schema.String.check(
   Schema.isPattern(/^[a-z][a-z0-9-]*$/u),
 ).pipe(Schema.brand("EnvName"));
 export type EnvName = typeof EnvName.Type;
 
-/** A checkout's root: the real, absolute directory holding its `berth.json`. */
+/** Real (symlinks resolved) and absolute. */
 export const CheckoutPath = Schema.String.check(
   Schema.isPattern(/^(\/|[A-Za-z]:\\)/u),
 ).pipe(Schema.brand("CheckoutPath"));
 export type CheckoutPath = typeof CheckoutPath.Type;
 
-/** The machine a lease lives on. Paths mean something only there. */
 export const MachineName = Schema.NonEmptyString.pipe(
   Schema.brand("MachineName"),
 );
 export type MachineName = typeof MachineName.Type;
 
-/** A Shopify store's permanent domain, `<handle>.myshopify.com`. */
 export const StoreDomain = Schema.String.check(
   Schema.isPattern(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/u),
 ).pipe(Schema.brand("StoreDomain"));
 export type StoreDomain = typeof StoreDomain.Type;
 
-/** A store domain's handle, the part before `.myshopify.com`. */
 export const handleOf = (domain: StoreDomain): string =>
   domain.slice(0, -".myshopify.com".length);
 
-/**
- * What one env of a project needs: a Shopify dev store. `config` is the app
- * config file the env's `shopify app dev` runs with, relative to the checkout.
- * A `store.pool` that older manifests carry decodes and is ignored.
- */
 export const EnvSpec = Schema.Struct({
   store: Schema.Struct({ config: Schema.NonEmptyString }).pipe(
     Schema.annotateKey({
@@ -61,23 +48,19 @@ export const EnvSpec = Schema.Struct({
 });
 export type EnvSpec = typeof EnvSpec.Type;
 
-/** `berth.json`, committed at a checkout's root. */
 export const Manifest = Schema.Struct({
   project: ProjectName,
   envs: Schema.Record(EnvName, EnvSpec),
 });
 export type Manifest = typeof Manifest.Type;
 
-/** `~/.config/berth/config.json`. Every field is optional. */
 export const Config = Schema.Struct({
   machine: Schema.optional(MachineName),
 });
 export type Config = typeof Config.Type;
 
-/** {@link Config} with the machine resolved, and the store pool. */
 export interface Policy {
   readonly machine: MachineName;
-  /** The stores berth may lease, in `stores.json` order. */
   readonly stores: ReadonlyArray<StoreDomain>;
 }
 
@@ -92,14 +75,12 @@ export const LeaseKey = Schema.Struct({
 });
 export type LeaseKey = typeof LeaseKey.Type;
 
-/** A store a lease holds, with the app config it was granted for. */
 export const StoreGrant = Schema.Struct({
   domain: StoreDomain,
   config: Schema.NonEmptyString,
 });
 export type StoreGrant = typeof StoreGrant.Type;
 
-/** One (checkout, env)'s store. */
 export const Lease = Schema.Struct({
   key: LeaseKey,
   project: ProjectName,
@@ -108,10 +89,6 @@ export const Lease = Schema.Struct({
 });
 export type Lease = typeof Lease.Type;
 
-/**
- * The whole ledger. {@link checkState} holds for every stored value. The
- * `pool` and `poolSyncedAt` of older generations decode and are dropped.
- */
 export const State = Schema.Struct({ leases: Schema.Array(Lease) });
 export type State = typeof State.Type;
 
@@ -123,10 +100,6 @@ export const sameKey = (a: LeaseKey, b: LeaseKey): boolean =>
 const describeKey = (key: LeaseKey) =>
   `${key.machine}:${key.checkout} ${key.env}`;
 
-/**
- * The invariants of {@link State}: no key held twice and no store held twice.
- * Returns the first violation.
- */
 export const checkState = (state: State): Option.Option<string> => {
   const keys = new Set<string>();
   const stores = new Map<StoreDomain, string>();
@@ -144,7 +117,6 @@ export const checkState = (state: State): Option.Option<string> => {
   return Option.none();
 };
 
-/** This machine's leases whose checkout is in `gone`: the only staleness. */
 export const staleLeases = (
   state: State,
   machine: MachineName,
@@ -154,7 +126,6 @@ export const staleLeases = (
     (lease) => lease.key.machine === machine && gone.has(lease.key.checkout),
   );
 
-/** Ends the leases with these keys. Ending a lease that is gone is a no-op. */
 export const release = (
   state: State,
   keys: ReadonlyArray<LeaseKey>,
@@ -165,7 +136,6 @@ export const release = (
   ),
 });
 
-/** Ends this machine's leases whose checkout is in `gone`. */
 export const sweep = (
   state: State,
   machine: MachineName,
@@ -176,17 +146,14 @@ export const sweep = (
     staleLeases(state, machine, gone).map((lease) => lease.key),
   );
 
-/** The store each lease holds, by domain. */
 const holders = (state: State): ReadonlyMap<StoreDomain, Lease> =>
   new Map(state.leases.map((lease) => [lease.store.domain, lease]));
 
-/** The lease holding `domain`, if any. */
 export const holderOf = (
   state: State,
   domain: StoreDomain,
 ): Option.Option<Lease> => Option.fromNullishOr(holders(state).get(domain));
 
-/** The first store in `stores` that no lease holds. */
 export const pickStore = (
   state: State,
   stores: ReadonlyArray<StoreDomain>,
@@ -195,22 +162,18 @@ export const pickStore = (
   return Option.fromNullishOr(stores.find((domain) => !held.has(domain)));
 };
 
-/** What {@link reconcile} is asked to make true. */
 export interface Request {
   readonly key: LeaseKey;
   readonly project: ProjectName;
   readonly spec: EnvSpec;
-  /** The exact store `--adopt` asks for, once, for migration. */
   readonly adopt: Option.Option<StoreDomain>;
 }
 
-/** The facts {@link reconcile} needs from outside, gathered by the shell. */
 export interface Facts {
   readonly policy: Policy;
   readonly now: Lease["acquiredAt"];
 }
 
-/** `--adopt` asked for a store berth cannot give this lease. */
 export class AdoptRefusedError extends Schema.TaggedError<AdoptRefusedError>()(
   "AdoptRefusedError",
   {
@@ -223,10 +186,7 @@ export class AdoptRefusedError extends Schema.TaggedError<AdoptRefusedError>()(
   }
 }
 
-/**
- * Every store in `stores.json` is leased. berth never creates a store; the
- * pool grows by adding a store to `stores.json`.
- */
+/** berth never creates a store; the pool grows by adding one to `stores.json`. */
 export class StorePoolExhaustedError extends Schema.TaggedError<StorePoolExhaustedError>()(
   "StorePoolExhaustedError",
   { stores: Schema.Int },
@@ -236,13 +196,7 @@ export class StorePoolExhaustedError extends Schema.TaggedError<StorePoolExhaust
   }
 }
 
-/**
- * Makes the request's lease match its spec: an adopted store replaces the
- * held one, a held store stays while `stores.json` lists it, and otherwise the
- * first free store is granted. A lease that already matches comes back
- * unchanged, so the ledger skips the write. `acquiredAt` is set once, on
- * creation.
- */
+/** A lease that already matches comes back unchanged, so the ledger skips the write. */
 export const reconcile = Effect.fn("Domain.reconcile")(function* (
   state: State,
   request: Request,

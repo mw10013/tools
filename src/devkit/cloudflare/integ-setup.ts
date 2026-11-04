@@ -1,10 +1,8 @@
 /**
  * A Vitest `globalSetup` for an app's integration project: every run starts with no
- * `<app>-test` stack in `.alchemy/`. Over a stage an earlier run left behind (interrupted, or
- * kept on purpose), Alchemy restarts a local Worker on a new port but plans the bindings that
- * carry its own URL from the stored one, the old port, so the Worker points at nothing. The stack
- * is local and exists only for these runs, so its state, data and bundles are removed before any
- * file deploys.
+ * `<app>-test` stack in `.alchemy/`. Over a stage an earlier run left behind, Alchemy restarts a
+ * local Worker on a new port but plans the bindings that carry its own URL from the stored one,
+ * the old port, so the Worker points at nothing.
  *
  * @module
  */

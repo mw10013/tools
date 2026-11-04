@@ -20,7 +20,6 @@ import { spawnSync } from "node:child_process";
 import { ROOT } from "#devkit/core/app.ts";
 import type { WebEnvironment } from "./web.ts";
 
-/** berth did not grant the lease; `reason` is berth's error tag, `message` says what to do. */
 export class LeaseNotGrantedError extends Schema.TaggedError<LeaseNotGrantedError>()(
   "LeaseNotGrantedError",
   {
@@ -81,8 +80,6 @@ const notGranted = (
     message: error.message,
   });
 
-/** The checkout's root, where berth finds `berth.json`. */
-
 export const leaseOf = (
   environment: WebEnvironment,
   stdout: string,
@@ -110,7 +107,6 @@ const notFound = (environment: WebEnvironment) =>
       "berth did not run: install its shim, ~/.local/bin/berth running `vpx ~/projects/tools/berth.ts`",
   });
 
-/** `berth acquire <environment>`: this checkout's lease, made on first use. berth's own lines go to stderr. */
 export const acquire = Effect.fn("Berth.acquire")(function* (
   environment: WebEnvironment,
 ) {

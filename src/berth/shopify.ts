@@ -1,10 +1,3 @@
-/**
- * What berth reads from the Shopify CLI's files: whether a checkout's
- * `shopify app dev` is running on a store. No CLI JSON shape leaves this
- * module.
- *
- * @module
- */
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -13,7 +6,7 @@ import * as Schema from "effect/Schema";
 
 import { type CheckoutPath, type StoreDomain } from "./domain.ts";
 
-/** True when a process with this pid exists, whoever owns it. */
+// EPERM: the process exists but belongs to another user.
 const isAlive = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
@@ -23,7 +16,6 @@ const isAlive = (pid: number): boolean => {
   }
 };
 
-/** The part of `.shopify/dev/app-dev-*.json` berth reads. */
 const DevSession = Schema.fromJsonString(
   Schema.Struct({
     pid: Schema.Int,
@@ -31,10 +23,6 @@ const DevSession = Schema.fromJsonString(
   }),
 );
 
-/**
- * The pid of a live `shopify app dev` in `checkout` on `store`, from the CLI's
- * session files. A file that does not decode is not a session berth knows.
- */
 export const liveSession = Effect.fn("Shopify.liveSession")(function* (
   checkout: CheckoutPath,
   store: StoreDomain,

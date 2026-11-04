@@ -12,12 +12,7 @@ export class CommandError extends Schema.TaggedError<CommandError>()(
   },
 ) {}
 
-/**
- * Runs a command to completion and returns its stdout. A non-zero exit fails
- * with the command line and its stderr in the message; `spawner.string` does
- * not check the exit code, which is why this exists. `env` is added to the
- * inherited environment.
- */
+/** Fails on a non-zero exit, which `spawner.string` does not check. */
 export const runCommand = Effect.fn("Command.runCommand")(function* (
   command: string,
   args: readonly string[],

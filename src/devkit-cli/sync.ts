@@ -5,9 +5,6 @@
  * records each file's SHA-256, and a sync refuses while any vendored file
  * differs from it, so a fix is made in tools and synced, never made in place.
  *
- * Layers nest: `shopify` includes `cloudflare`, which includes `core`. Tests
- * (`*.test.ts`) stay in tools.
- *
  * @module
  */
 import { createHash } from "node:crypto";
@@ -25,7 +22,6 @@ export const LAYERS = ["core", "cloudflare", "shopify"] as const;
 export const Layer = Schema.Literals(LAYERS);
 export type Layer = typeof Layer.Type;
 
-/** `vendor/devkit/devkit.json`: what the last sync wrote. */
 export const Stamp = Schema.Struct({
   devkit: Schema.Literal(1),
   tools: Schema.String,
@@ -48,7 +44,6 @@ export class NoLayerError extends Schema.TaggedError<NoLayerError>()(
   }
 }
 
-/** A vendored file no longer matches `devkit.json`. */
 export class EditedVendorError extends Schema.TaggedError<EditedVendorError>()(
   "EditedVendorError",
   { files: Schema.Array(Schema.String) },
@@ -61,10 +56,8 @@ export class EditedVendorError extends Schema.TaggedError<EditedVendorError>()(
 const sha256 = (text: string) =>
   createHash("sha256").update(text).digest("hex");
 
-/** The layers `layer` includes, innermost first. */
 const layersOf = (layer: Layer) => LAYERS.slice(0, LAYERS.indexOf(layer) + 1);
 
-/** devkit's files for `layer` at tools' HEAD, keyed by their path under `vendor/devkit/`. */
 export const source = Effect.fn("Devkit.source")(function* (
   tools: string,
   layer: Layer,
@@ -109,7 +102,6 @@ const readStamp = Effect.fn("Devkit.readStamp")(function* (app: string) {
   );
 });
 
-/** Vendored files that differ from the stamp, or are gone. */
 const editedFiles = Effect.fn("Devkit.editedFiles")(function* (
   app: string,
   stamp: Stamp,
@@ -136,7 +128,6 @@ export interface Synced {
   readonly removed: ReadonlyArray<string>;
 }
 
-/** Makes `vendor/devkit/` in the app at `app` match tools' HEAD for `layer`, or the last sync's. */
 export const sync = Effect.fn("Devkit.sync")(function* (
   tools: string,
   app: string,
@@ -195,7 +186,6 @@ export interface Status {
   readonly edited: ReadonlyArray<string>;
 }
 
-/** Whether the app's vendored devkit is edited, and whether a sync would change it. */
 export const status = Effect.fn("Devkit.status")(function* (
   tools: string,
   app: string,

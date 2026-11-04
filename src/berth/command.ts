@@ -23,7 +23,6 @@ import * as Berth from "./lease.ts";
 import { Ledger } from "./ledger.ts";
 import { findCheckout, ledgerDirectory, loadPolicy } from "./settings.ts";
 
-/** What `berth acquire` prints, and each lease `release` and `list` print. */
 interface LeaseJson {
   readonly berth: 1;
   readonly project: string;
@@ -47,11 +46,6 @@ const toLeaseJson = (lease: Lease): LeaseJson => ({
 const printJson = (value: unknown) =>
   Console.log(JSON.stringify(value, null, 2));
 
-/**
- * Runs a command body with the machine's policy and ledger. A typed failure
- * prints `{ berth: 1, error: { _tag, message, ...fields } }` on stdout, its
- * message on stderr, and exits 1. Defects keep Effect's rendering.
- */
 const run = <
   A,
   E extends { readonly _tag: string; readonly message: string },
@@ -85,7 +79,6 @@ const run = <
     }),
   );
 
-/** `--adopt store=mw10013-pool-01`: a store's handle or domain. */
 const parseAdopt = (
   pairs: Option.Option<Record<string, string>>,
 ): Option.Option<Option.Option<StoreDomain>> => {

@@ -1,8 +1,3 @@
-/**
- * What wt asks of git and gh. Paths are absolute and real.
- *
- * @module
- */
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -10,7 +5,6 @@ import * as Schema from "effect/Schema";
 
 import { capture, run } from "./process.ts";
 
-/** The directory is not inside a git repository. */
 export class NotARepositoryError extends Schema.TaggedError<NotARepositoryError>()(
   "NotARepositoryError",
   { directory: Schema.String },
@@ -20,7 +14,6 @@ export class NotARepositoryError extends Schema.TaggedError<NotARepositoryError>
   }
 }
 
-/** One entry of `git worktree list`. The first is the main checkout. */
 export interface Worktree {
   readonly path: string;
   readonly head: string;
@@ -28,7 +21,7 @@ export interface Worktree {
   readonly main: boolean;
 }
 
-/** Parses `git worktree list --porcelain`. */
+// git lists the main checkout first.
 export const parseWorktrees = (porcelain: string): ReadonlyArray<Worktree> =>
   porcelain
     .split("\n\n")
@@ -52,11 +45,9 @@ export const parseWorktrees = (porcelain: string): ReadonlyArray<Worktree> =>
       };
     });
 
-/** A repository, from any of its checkouts. */
 export interface Repository {
-  /** The main checkout's directory. */
   readonly root: string;
-  /** The main checkout's directory name, which T3 Code groups worktrees by. */
+  /** T3 Code groups worktrees by this. */
   readonly name: string;
   readonly hasOrigin: boolean;
 }
@@ -91,7 +82,6 @@ export const worktrees = Effect.fn("Git.worktrees")(function* (
   );
 });
 
-/** Whether `ref` (a full ref name) exists. */
 export const refExists = Effect.fn("Git.refExists")(function* (
   repository: Repository,
   ref: string,
@@ -105,10 +95,7 @@ export const refExists = Effect.fn("Git.refExists")(function* (
   return output.exitCode === 0;
 });
 
-/**
- * Updates the remote-tracking refs, so a base and a landed check see what
- * GitHub has. Offline, wt carries on with the refs it has.
- */
+/** Offline, wt carries on with the refs it has. */
 export const fetchOrigin = Effect.fn("Git.fetchOrigin")(function* (
   repository: Repository,
 ) {
@@ -122,10 +109,6 @@ export const fetchOrigin = Effect.fn("Git.fetchOrigin")(function* (
   return output.exitCode === 0;
 });
 
-/**
- * Where new work starts and what landed work is in: `origin/<default>` when
- * the repository has a remote, else the main checkout's branch.
- */
 export const baseRef = Effect.fn("Git.baseRef")(function* (
   repository: Repository,
 ) {
@@ -146,12 +129,10 @@ export const baseRef = Effect.fn("Git.baseRef")(function* (
   return branch.length > 0 ? branch : "HEAD";
 });
 
-/** Whether the checkout has changes git would lose: modified, staged or untracked. */
 export const isDirty = Effect.fn("Git.isDirty")(function* (path: string) {
   return (yield* run(path, "git", ["status", "--porcelain"])).trim().length > 0;
 });
 
-/** Commits on `ref` that `base` lacks. */
 export const commitsAhead = Effect.fn("Git.commitsAhead")(function* (
   repository: Repository,
   base: string,
@@ -172,11 +153,7 @@ const MergedPullRequests = Schema.fromJsonString(
   ),
 );
 
-/**
- * The merged pull request whose head was `head`, the evidence a squash merge
- * leaves, since a squash puts none of the branch's commits on the base.
- * `None` when gh finds none or cannot ask.
- */
+/** A squash merge puts none of the branch's commits on the base; the merged PR is the evidence. */
 export const mergedPullRequest = Effect.fn("Git.mergedPullRequest")(function* (
   repository: Repository,
   branch: string,

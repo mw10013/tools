@@ -6,10 +6,6 @@
  * ({@link "./berth.ts"}), so each runs its own dev server, on a port it picks, and
  * its own `shopify app dev` session on its own dev store ({@link StoreName}).
  *
- * `refs/` exists once, in the main checkout; a linked worktree has a symlink
- * named `refs` pointing at it. `.gitignore` lists `/refs` without a trailing
- * slash so the one rule ignores both the directory and the symlink.
- *
  * @module
  */
 import * as Effect from "effect/Effect";
@@ -80,10 +76,8 @@ const ShopStoreName = Schema.TemplateLiteralParser([
 );
 
 /**
- * A Shopify store's name as a codec between the name and `{ purpose, index }`: `mw10013-pool-NN`
- * for a pool store, `mw10013-<staging|production>-shop-NN` for a stage's. `NN` is two digits, the store's index
- * among its purpose's stores; it says nothing about which checkout holds a pool store. Store names
- * share one namespace across all of Shopify and a taken name silently becomes a suffixed domain, so
+ * `NN` is the store's index among its purpose's stores; it says nothing about which checkout holds
+ * a pool store. Store names share one namespace across all of Shopify and a taken name silently becomes a suffixed domain, so
  * generic names are taken; `mw10013`, the organization's handle, keeps ours unique. berth leases a
  * pool store to one checkout and environment at a time because the CLI rewrites the app's URL per
  * store: two `shopify app dev` sessions on one store overwrite each other's, and the last wins.
@@ -99,7 +93,6 @@ export const storeNameOf = (
   index: number,
 ) => encodeShopStoreName({ purpose, index });
 
-/** A {@link StoreName} whose purpose is one of `purposes`. */
 export const StoreFor = (purposes: readonly StorePurpose[], expected: string) =>
   StoreName.pipe(
     Schema.check(
@@ -120,7 +113,6 @@ const Lines = Schema.String.pipe(
   ),
 );
 
-/** This checkout's git directory and the repository's common one, both absolute. */
 const gitDirs = runCommand("git", [
   "rev-parse",
   "--path-format=absolute",
@@ -135,11 +127,6 @@ const gitDirs = runCommand("git", [
   Effect.map(([gitDir, commonDir]) => ({ gitDir, commonDir })),
 );
 
-/**
- * Where this checkout sits: `root` is its top level, `mainCheckout` the main
- * checkout's root (the parent of the common git directory), and `linked` is
- * true in a linked worktree, whose git directory differs from the common one.
- */
 export const checkoutKind = Effect.all([
   gitDirs,
   runCommand("git", ["rev-parse", "--show-toplevel"]),
@@ -151,16 +138,14 @@ export const checkoutKind = Effect.all([
   })),
 );
 
-/** The branch checked out here; empty on a detached HEAD. */
+/** Empty on a detached HEAD. */
 export const currentBranch = runCommand("git", [
   "branch",
   "--show-current",
 ]).pipe(Effect.map((output) => output.trim()));
 
 /**
- * The stage of `environment`, `<environment>-<user>` ({@link PerDeveloperStage}), the same in
- * every checkout: each checkout keeps its per-developer stages in its own `.alchemy/`. Fails,
- * rather than falling back to a guess, when `user` is not lowercase letters and digits.
+ * The same in every checkout: each checkout keeps its per-developer stages in its own `.alchemy/`.
  */
 export const stageOf = Effect.fn("Worktree.stageOf")(function* (
   environment: PerDeveloper,
@@ -179,6 +164,5 @@ export const stageOf = Effect.fn("Worktree.stageOf")(function* (
   );
 });
 
-/** This checkout's stage of `environment`, from `$USER`; see {@link stageOf}. */
 export const stage = (environment: PerDeveloper) =>
   stageOf(environment, process.env.USER);

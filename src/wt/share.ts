@@ -2,8 +2,7 @@
  * What a linked worktree takes from the main checkout, the files git does not
  * carry: `.env` is copied, and `refs` and every untracked `.env.<suffix>` are
  * symlinked, so a deployed stage's values and the reference sources exist
- * once. A missing source is skipped. Idempotent: a second run on an unchanged
- * main checkout writes nothing.
+ * once.
  *
  * A hand edit to a worktree's `.env` is lost on the next run: make it in the
  * main checkout's and run `wt init`.
@@ -21,7 +20,6 @@ import * as Schema from "effect/Schema";
 
 import { run } from "./process.ts";
 
-/** A shared name in the worktree is a real file or a link elsewhere. */
 export class SharedPathError extends Schema.TaggedError<SharedPathError>()(
   "SharedPathError",
   { path: Schema.String, expected: Schema.String },
@@ -31,7 +29,6 @@ export class SharedPathError extends Schema.TaggedError<SharedPathError>()(
   }
 }
 
-/** The keys `after` adds, changes and removes relative to `before`. */
 export const envChanges = (before: string, after: string) => {
   const was = parseEnv(before);
   const now = parseEnv(after);
@@ -102,7 +99,6 @@ const link = Effect.fn("Share.link")(function* (
   yield* Console.error(`wt: linked ${name} to the main checkout's`);
 });
 
-/** The names a worktree links to the main checkout at `main`. */
 const sharedNames = Effect.fn("Share.sharedNames")(function* (main: string) {
   const fs = yield* FileSystem.FileSystem;
   const tracked = new Set(
@@ -119,7 +115,6 @@ const sharedNames = Effect.fn("Share.sharedNames")(function* (main: string) {
   ];
 });
 
-/** Makes the worktree at `worktree` share the main checkout's untracked files. */
 export const share = Effect.fn("Share.share")(function* (
   worktree: string,
   main: string,

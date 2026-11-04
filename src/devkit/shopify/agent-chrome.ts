@@ -16,7 +16,6 @@ import { chromium } from "playwright";
 
 import { runCommand } from "#devkit/core/command.ts";
 
-/** A failure of the agent Chrome; every message is for the person at the terminal. */
 export class AgentChromeError extends Schema.TaggedError<AgentChromeError>()(
   "AgentChromeError",
   {
@@ -32,21 +31,16 @@ export class AgentChromeError extends Schema.TaggedError<AgentChromeError>()(
  * and checkout on the machine shares it, so one Shopify login covers every store.
  */
 export const AGENT_CDP = "http://127.0.0.1:9333";
-/**
- * App data, so it follows the XDG Base Directory layout: `$XDG_DATA_HOME`, or `~/.local/share`
- * when that is unset or empty, as the spec says.
- * @see https://specifications.freedesktop.org/basedir-spec/latest/
- */
+/** @see https://specifications.freedesktop.org/basedir-spec/latest/ */
 const AGENT_PROFILE = path.join(
   // oxlint-disable-next-line typescript/prefer-nullish-coalescing -- the XDG spec reads an empty XDG_DATA_HOME as unset
   process.env.XDG_DATA_HOME || path.join(homedir(), ".local", "share"),
   "agent-chrome-for-testing",
 );
 /**
- * The agent Chrome is Chrome for Testing, Playwright's Chromium build (`vp exec playwright install
- * chromium`), not the person's Google Chrome. One bundle id per app is how macOS routes a click on
- * Chrome in the Dock, or a link from another app: with the person's own Chrome closed, an agent
- * Chrome of the same bundle came forward instead, windowless, looked hung, and was force-quit.
+ * Chrome for Testing (`vp exec playwright install chromium`), not Google Chrome: macOS routes a
+ * Dock click or a link from another app by bundle id, so an agent Chrome sharing Google Chrome's
+ * bundle takes them, windowless, whenever the person's own Chrome is closed.
  */
 const CHROME_BINARY = chromium.executablePath();
 const CHROME_APP = CHROME_BINARY.slice(
@@ -184,9 +178,8 @@ const launchAgentChrome = Effect.fn("AgentChrome.launch")(function* (
 });
 
 /**
- * The agent Chrome's main process, found by its debugging port, which only the main process's
- * command line carries; that also finds an agent Chrome launched from Google Chrome before it moved
- * to Chrome for Testing. Never quit Chrome by app name: the person's own Chrome is "Google Chrome".
+ * Only the main process's command line carries the debugging port. Never quit Chrome by app name:
+ * the person's own Chrome is "Google Chrome".
  */
 const agentChromePids = runCommand("pgrep", [
   "-f",
@@ -197,7 +190,6 @@ const agentChromePids = runCommand("pgrep", [
   Effect.orElseSucceed(() => []),
 );
 
-/** Whether the agent Chrome running is this profile's Chrome for Testing, not an earlier one. */
 const runsChromeForTesting = runCommand("pgrep", [
   "-f",
   `${CHROME_BINARY} --user-data-dir=${AGENT_PROFILE}`,
@@ -206,7 +198,7 @@ const runsChromeForTesting = runCommand("pgrep", [
   Effect.orElseSucceed(() => false),
 );
 
-/** Asks the agent Chrome to quit over CDP, which writes its cookie store out first. */
+/** `Browser.close` writes the cookie store out before Chrome exits. */
 const closeOverCdp = Effect.acquireUseRelease(
   Effect.tryPromise(() => chromium.connectOverCDP(AGENT_CDP)),
   (browser) =>
@@ -218,7 +210,6 @@ const closeOverCdp = Effect.acquireUseRelease(
   (browser) => Effect.promise(() => browser.close().catch(() => undefined)),
 ).pipe(Effect.ignore);
 
-/** Whether the agent Chrome's main process is gone within `within`. */
 const exitedWithin = (within: Duration.Input) =>
   agentChromePids.pipe(
     Effect.repeat({
@@ -231,11 +222,7 @@ const exitedWithin = (within: Duration.Input) =>
     Effect.map((left) => left.length === 0),
   );
 
-/**
- * Quits the agent Chrome and waits for exit. CDP's `Browser.close` comes first: SIGTERM exits
- * without writing out cookies set since Chrome's last periodic write, which lost a Shopify login
- * made seconds before (2026-11-02). SIGTERM is the fallback for a Chrome that does not answer.
- */
+/** SIGTERM exits without writing out cookies set since Chrome's last periodic write, so it is only the fallback. */
 const stopAgentChrome = Effect.gen(function* () {
   if ((yield* agentChromePids).length === 0) return;
   yield* closeOverCdp;
@@ -249,7 +236,6 @@ const stopAgentChrome = Effect.gen(function* () {
   });
 });
 
-/** The Shopify origins whose cookies carry the admin login, as an e2e browser needs them. */
 const SHOPIFY_URLS = [
   "https://admin.shopify.com",
   "https://accounts.shopify.com",
@@ -285,9 +271,9 @@ const cdp = (route: string, method: "GET" | "PUT" = "GET") =>
   });
 
 /**
- * Starts the agent Chrome headless when it is not answering. A running one is left in whatever
- * mode it is in: switching would close other agents' tabs. Returns whether it was started, because a
- * chrome-devtools server attached to the previous Chrome has to be restarted.
+ * A running one is left in whatever mode it is in: switching would close other agents' tabs.
+ * Returns whether it was started, because a chrome-devtools server attached to the previous Chrome
+ * has to be restarted.
  */
 export const ensureAgentChrome = Effect.gen(function* () {
   if (
@@ -302,7 +288,6 @@ export const ensureAgentChrome = Effect.gen(function* () {
   return true;
 });
 
-/** Whether `target` is the store's admin, loaded and logged in; see {@link checkShopifyLogin}. */
 export const isStoreAdmin = (
   store: string,
   target: { readonly url: string; readonly title: string },
@@ -318,11 +303,7 @@ export const isStoreAdmin = (
   );
 };
 
-/**
- * What the agent Chrome's tab `targetId` shows: its title and the start of its text, read through
- * Playwright, for a failure to quote. None when it cannot be read; it never fails, since it only
- * adds to a failure already on its way.
- */
+/** Never fails: it only adds detail to a failure already on its way. */
 const tabShows = (targetId: string) =>
   Effect.acquireUseRelease(
     Effect.tryPromise(() => chromium.connectOverCDP(AGENT_CDP)),
@@ -345,7 +326,7 @@ const tabShows = (targetId: string) =>
   ).pipe(Effect.option);
 
 /**
- * Opens the store's admin in a new tab and waits for its own title. Logged in, the admin titles
+ * Logged in, the admin titles
  * the page `<store name> · <page> · Shopify` at `admin.shopify.com/store/<store>` (the name is the
  * handle for the `mw10013` stores and a display name, "Sandbox Shop 01", for the Partner
  * organization's, so the URL names the store); a lapsed login lands on accounts.shopify.com, titled
@@ -410,10 +391,8 @@ export const checkShopifyLogin = Effect.fn("AgentChrome.checkShopifyLogin")(
 );
 
 /**
- * `vp run browser login`, run by a person: relaunches the agent Chrome headed at the store's admin,
- * waits for them to log in, then relaunches it headless. The wait watches the window's own tab for
- * the admin's title rather than opening check tabs in front of someone typing a password. An agent
- * never runs this: the relaunches close every agent's tabs.
+ * Run by a person, never an agent: the relaunches close every agent's tabs. The wait watches the
+ * window's own tab rather than opening check tabs in front of someone typing a password.
  */
 export const loginAgentChrome = Effect.fn("AgentChrome.login")(function* (
   store: string,
@@ -465,11 +444,8 @@ export const loginAgentChrome = Effect.fn("AgentChrome.login")(function* (
 export const storageStatePath = "playwright/.auth/shopify-admin.json";
 
 /**
- * Writes the agent Chrome's Shopify login as the Playwright storage state that isolated browsers
- * (the e2e workers, the screenshot and screencast scripts) load. It reads the live browser, which
- * renews the session itself, after {@link checkShopifyLogin} proves the login, so the copy is as
- * fresh as the agent Chrome. The write is atomic through a staging file beside the output, and the
- * file is 0600: it holds a login.
+ * Reads the live browser, which renews the session itself, so the copy is as fresh as the agent
+ * Chrome.
  */
 export const exportShopifyAdminAuth = Effect.fn(
   "AgentChrome.exportShopifyAdminAuth",
