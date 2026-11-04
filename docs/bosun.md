@@ -84,6 +84,7 @@ line starts with a timestamp.
 
 The runner, the command and `s6-log` each lead their own process group. A stop
 signals the command's group alone, so the runner and the logger outlive it,
-drain its last output and write `==== <name> exit run=<id> code=<n>`. When the
+drain its last output and write `==== <name> exit run=<id> code=<n>`, or
+`signal=<name>` for a command the signal ended (one that does not catch it). When the
 command exits, the runner also ends anything left in its group, since a
 straggler would hold the logger's pipe open.
