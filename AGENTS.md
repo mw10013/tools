@@ -1,6 +1,4 @@
-# Working agreements
-
-Use the coder skill for coding and development-tool conventions.
+Use coder skill.
 
 ## Project
 
