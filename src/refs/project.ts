@@ -63,6 +63,11 @@ export const sources = {
     dependency: "graphql-yoga",
     tag: "graphql-yoga@",
   },
+  stylex: {
+    repository: "facebook/stylex",
+    dependency: "@stylexjs/stylex",
+    tag: "",
+  },
 } as const;
 export type Reference = keyof typeof sources;
 
