@@ -14,7 +14,7 @@ class RefError extends Schema.TaggedError<RefError>()("RefError", {
 
 export const sources = {
   astryx: {
-    repository: "facebook/astryx",
+    repository: "meta/astryx",
     dependency: "@astryxdesign/core",
     tag: "v",
   },
@@ -64,7 +64,7 @@ export const sources = {
     tag: "graphql-yoga@",
   },
   stylex: {
-    repository: "facebook/stylex",
+    repository: "meta/stylex",
     dependency: "@stylexjs/stylex",
     tag: "",
   },
