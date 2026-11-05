@@ -380,3 +380,7 @@ refuses while a vendored file differs from that record: fix devkit in tools,
 commit, and sync. The app's formatter skips `vendor/` (tools formats at 80
 columns); its linter and type check cover it, since a file the linter ignores
 is not type-checked either.
+
+`cloudflare/logs.ts` is the one runnable file: a deployed stage's Worker logs
+from Workers Observability. An app's `package.json` runs it as
+`"logs": "vpx vendor/devkit/cloudflare/logs.ts"` (`show`, `follow`, `wait`).
