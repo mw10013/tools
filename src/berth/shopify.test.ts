@@ -153,3 +153,41 @@ esac`,
     );
   });
 });
+
+describe("ShopifyCli.layer create status", () => {
+  // CLI 5.0.0: the store is made, then the status poll fails.
+  const STATUS_FAILS = `case "$*" in
+  "store list"*)
+    if [ -f made ]; then
+      n=$(cat lists 2>/dev/null || echo 0); echo $((n + 1)) > lists
+      if [ "$n" -ge "$(cat lag)" ]; then cat made.json; exit 0; fi
+    fi
+    cat all.json ;;
+  "store create"*)
+    touch made
+    echo '{"message":"Unable to determine store creation status."}'
+    exit 1 ;;
+esac`;
+  const pooled = store("shop-00", "dev", "basic");
+  const files = (lag: number) => ({
+    "all.json": { stores: [pooled] },
+    "made.json": { stores: [pooled, store("shop-01", "dev", "basic")] },
+    lag,
+  });
+
+  it("takes a store that a failed create made", async () => {
+    const file = stubShopify(STATUS_FAILS, files(0));
+    expect(await runEnsure(file, 2)).toMatchObject({
+      _tag: "Success",
+      success: { created: ["shop-01.myshopify.com"] },
+    });
+  });
+
+  it("waits for a store the list shows late, so a rerun does not make it twice", async () => {
+    const file = stubShopify(STATUS_FAILS, files(1));
+    expect(await runEnsure(file, 2)).toMatchObject({
+      _tag: "Success",
+      success: { created: ["shop-01.myshopify.com"] },
+    });
+  });
+});
