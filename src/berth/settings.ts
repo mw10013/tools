@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
   Config as BerthConfig,
@@ -13,8 +12,8 @@ import {
   MachineName,
   Manifest,
   type Policy,
-  StoreDomain,
 } from "./domain.ts";
+import { Pool } from "./pool.ts";
 
 export class ManifestNotFoundError extends Schema.TaggedError<ManifestNotFoundError>()(
   "ManifestNotFoundError",
@@ -75,31 +74,46 @@ export const findCheckout = Effect.fn("Settings.findCheckout")(function* (
   }
 });
 
-const StoresFile = Schema.Array(
-  Schema.String.pipe(
-    Schema.decodeTo(
-      StoreDomain,
-      SchemaTransformation.transform({
-        decode: (handle) => `${handle}.myshopify.com`,
-        encode: (domain) => domain.slice(0, -".myshopify.com".length),
-      }),
-    ),
-  ),
-);
-
-const loadStores = Effect.fn("Settings.loadStores")(function* () {
-  const fs = yield* FileSystem.FileSystem;
+/** `stores.json` sits at the root of this repository, beside berth's source. */
+export const poolFile = Effect.gen(function* () {
   const path = yield* Path.Path;
-  const file = path.resolve(
+  return path.resolve(
     path.dirname(yield* path.fromFileUrl(new URL(import.meta.url))),
     "../../stores.json",
   );
+});
+
+const poolText = (pool: Pool) =>
+  `${JSON.stringify(Schema.encodeSync(Pool)(pool), null, 2)}\n`;
+
+export const loadPool = Effect.fn("Settings.loadPool")(function* (
+  file: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
   return yield* decodeFile(
-    StoresFile,
+    Pool,
     file,
     yield* fs.readFileString(file).pipe(Effect.orDie),
   );
 });
+
+/**
+ * Writes through a temp file and a rename, so a reader never sees a partial
+ * file. Returns whether the file changed: one that already holds `pool` is not
+ * written.
+ */
+export const savePool = Effect.fn("Settings.savePool")(function* (
+  file: string,
+  pool: Pool,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const text = poolText(pool);
+  if ((yield* fs.readFileString(file)) === text) return false;
+  const temp = `${file}.${String(process.pid)}.tmp`;
+  yield* fs.writeFileString(temp, text);
+  yield* fs.rename(temp, file);
+  return true;
+}, Effect.orDie);
 
 const xdgDirectory = (variable: string, fallback: string) =>
   Effect.gen(function* () {
@@ -134,6 +148,6 @@ export const loadPolicy = Effect.fn("Settings.loadPolicy")(function* () {
     machine:
       config.machine ??
       MachineName.make(os.hostname().replace(/\.local$/u, "")),
-    stores: yield* loadStores(),
+    stores: (yield* loadPool(yield* poolFile)).stores,
   } satisfies Policy;
 });

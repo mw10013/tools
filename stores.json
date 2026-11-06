@@ -1,16 +1,20 @@
-[
-  "mw10013-pool-00",
-  "mw10013-pool-01",
-  "mw10013-pool-02",
-  "mw10013-pool-03",
-  "mw10013-pool-04",
-  "mw10013-pool-05",
-  "mw10013-pool-06",
-  "mw10013-pool-07",
-  "mw10013-pool-08",
-  "mw10013-pool-09",
-  "mw10013-pool-10",
-  "mw10013-pool-11",
-  "mw10013-pool-12",
-  "mw10013-pool-13"
-]
+{
+  "organization": "130059740",
+  "prefix": "mw10013-pool-",
+  "stores": [
+    "mw10013-pool-00",
+    "mw10013-pool-01",
+    "mw10013-pool-02",
+    "mw10013-pool-03",
+    "mw10013-pool-04",
+    "mw10013-pool-05",
+    "mw10013-pool-06",
+    "mw10013-pool-07",
+    "mw10013-pool-08",
+    "mw10013-pool-09",
+    "mw10013-pool-10",
+    "mw10013-pool-11",
+    "mw10013-pool-12",
+    "mw10013-pool-13"
+  ]
+}
