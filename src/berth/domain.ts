@@ -186,7 +186,7 @@ export class AdoptRefusedError extends Schema.TaggedError<AdoptRefusedError>()(
   }
 }
 
-/** berth never creates a store; the pool grows by adding one to `stores.json`. */
+/** `berth pool ensure <count>` grows the pool. */
 export class StorePoolExhaustedError extends Schema.TaggedError<StorePoolExhaustedError>()(
   "StorePoolExhaustedError",
   { stores: Schema.Int },

@@ -6,7 +6,7 @@ import * as Flag from "effect/cli/Flag";
  * repos and decode this shape with their own schema, so it is versioned by
  * `berth: 1` and only grows.
  *
- * `acquire`, `show` and `release` print exactly one JSON document on stdout,
+ * `acquire`, `show`, `release` and `pool ensure` print exactly one JSON document on stdout,
  * success or failure; human lines go to stderr. A typed failure exits 1, a usage error
  * exits 2.
  *
@@ -21,7 +21,14 @@ import * as Schema from "effect/Schema";
 import { handleOf, type Lease, type Policy, StoreDomain } from "./domain.ts";
 import * as Berth from "./lease.ts";
 import { Ledger } from "./ledger.ts";
-import { findCheckout, ledgerDirectory, loadPolicy } from "./settings.ts";
+import * as PoolEnsure from "./pool-ensure.ts";
+import {
+  findCheckout,
+  ledgerDirectory,
+  loadPolicy,
+  poolFile,
+} from "./settings.ts";
+import { ShopifyCli } from "./shopify.ts";
 
 interface LeaseJson {
   readonly berth: 1;
@@ -46,19 +53,15 @@ const toLeaseJson = (lease: Lease): LeaseJson => ({
 const printJson = (value: unknown) =>
   Console.log(JSON.stringify(value, null, 2));
 
-const run = <
+const report = <
   A,
   E extends { readonly _tag: string; readonly message: string },
   R,
 >(
-  body: (policy: Policy) => Effect.Effect<A, E, R>,
+  effect: Effect.Effect<A, E, R>,
   print: (value: A) => Effect.Effect<void>,
 ) =>
-  Effect.gen(function* () {
-    const policy = yield* loadPolicy();
-    const directory = yield* ledgerDirectory;
-    return yield* body(policy).pipe(Effect.provide(Ledger.layer(directory)));
-  }).pipe(
+  effect.pipe(
     Effect.matchEffect({
       onSuccess: print,
       onFailure: (error) =>
@@ -77,6 +80,23 @@ const run = <
           });
         }),
     }),
+  );
+
+const run = <
+  A,
+  E extends { readonly _tag: string; readonly message: string },
+  R,
+>(
+  body: (policy: Policy) => Effect.Effect<A, E, R>,
+  print: (value: A) => Effect.Effect<void>,
+) =>
+  report(
+    Effect.gen(function* () {
+      const policy = yield* loadPolicy();
+      const directory = yield* ledgerDirectory;
+      return yield* body(policy).pipe(Effect.provide(Ledger.layer(directory)));
+    }),
+    print,
   );
 
 const parseAdopt = (
@@ -264,9 +284,56 @@ const list = Command.make(
   ),
 );
 
+const ensure = Command.make(
+  "ensure",
+  {
+    count: Argument.Int("count").pipe(
+      Argument.withDescription(
+        "The pool size to grow to; with none, only check and adopt",
+      ),
+      Argument.optional,
+    ),
+  },
+  ({ count }) =>
+    report(
+      Effect.gen(function* () {
+        return yield* PoolEnsure.ensure(yield* poolFile, count);
+      }).pipe(Effect.provide(ShopifyCli.layer)),
+      ({ pool, adopted, created }) =>
+        printJson({
+          berth: 1,
+          pool: {
+            organization: pool.organization,
+            stores: pool.stores.length,
+            adopted: adopted.map(handleOf),
+            created: created.map(handleOf),
+          },
+        }),
+    ),
+).pipe(
+  Command.withShortDescription(
+    "Check stores.json against Shopify, adopt strays, and create stores up to a count",
+  ),
+  Command.withExamples([
+    {
+      command: "berth pool ensure",
+      description: "Check every listed store and adopt pool stores left out",
+    },
+    {
+      command: "berth pool ensure 16",
+      description: "Grow the pool to 16 stores",
+    },
+  ]),
+);
+
+const pool = Command.make("pool").pipe(
+  Command.withShortDescription("Manage the store pool in stores.json"),
+  Command.withSubcommands([ensure]),
+);
+
 export const command = Command.make("berth").pipe(
   Command.withDescription(
     "Lease Shopify dev stores per checkout and env, machine-wide.",
   ),
-  Command.withSubcommands([acquire, show, release, list]),
+  Command.withSubcommands([acquire, show, release, list, pool]),
 );
