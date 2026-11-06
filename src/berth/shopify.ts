@@ -1,4 +1,6 @@
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -124,6 +126,15 @@ const CreatedStore = CliResult(
   Schema.Struct({ store: Schema.Struct({ domain: Schema.String }) }),
 );
 
+/**
+ * How long a failed create waits for the store to show in the org's list. CLI
+ * 5.0.0's status poll fails on its first answer, "Unable to determine store
+ * creation status", while Shopify goes on to make the store, and the list shows
+ * a new store some seconds after the create. The CLI itself polls every 2 seconds.
+ */
+const APPEAR_POLL = Duration.seconds(2);
+const APPEAR_WITHIN = Duration.minutes(2);
+
 /** `--json` prints an AbortError's message on stdout too. */
 const CreateFailure = CliResult(Schema.Struct({ message: Schema.String }));
 
@@ -140,11 +151,14 @@ export class ShopifyCli extends Context.Service<
       ReadonlyArray<OrgStore>,
       ShopifyCliError | StoreListTruncatedError
     >;
-    /** Resolves to the domain Shopify gave the store, which a taken name suffixes. */
+    /**
+     * Resolves to the domain Shopify gave the store, which a taken name
+     * suffixes. A failed create first waits for the store in the org's list.
+     */
     readonly createDevStore: (
       organization: OrganizationId,
       name: string,
-    ) => Effect.Effect<string, ShopifyCliError>;
+    ) => Effect.Effect<string, ShopifyCliError | StoreListTruncatedError>;
   }
 >()("app/ShopifyCli") {
   static readonly layer = Layer.effect(
@@ -197,37 +211,56 @@ export class ShopifyCli extends Context.Service<
         );
       };
 
+      const listStores = Effect.fn("ShopifyCli.listStores")(function* (
+        organization: OrganizationId,
+      ) {
+        const args = ["store", "list", "--organization-id", organization];
+        const output = yield* shopify(args, "pipe");
+        if (output.exitCode !== 0)
+          return yield* new ShopifyCliError({
+            command: output.command,
+            detail: output.stderr.trim(),
+          });
+        const list = yield* Schema.decodeUnknownEffect(StoreList)(
+          output.stdout,
+        ).pipe(
+          Effect.mapError(
+            (issue) =>
+              new ShopifyCliError({
+                command: output.command,
+                detail: `berth cannot read its output: ${issue.message}`,
+              }),
+          ),
+        );
+        if (list.truncated === true)
+          return yield* new StoreListTruncatedError({ organization });
+        return list.stores.map((store): OrgStore => ({
+          domain: store.store,
+          name: store.name,
+          type: store.type,
+          plan: store.plan ?? undefined,
+        }));
+      });
+
+      // planPool picks a name no org store holds, so a store by that name is this create's.
+      const appearedAs = Effect.fn("ShopifyCli.appearedAs")(function* (
+        organization: OrganizationId,
+        name: string,
+      ) {
+        const deadline =
+          (yield* Clock.currentTimeMillis) + Duration.toMillis(APPEAR_WITHIN);
+        for (;;) {
+          const stores = yield* listStores(organization);
+          const store = stores.find((store) => store.name === name);
+          if (store !== undefined) return Option.some(store.domain);
+          if ((yield* Clock.currentTimeMillis) >= deadline)
+            return Option.none<string>();
+          yield* Effect.sleep(APPEAR_POLL);
+        }
+      });
+
       return {
-        listStores: Effect.fn("ShopifyCli.listStores")(function* (
-          organization: OrganizationId,
-        ) {
-          const args = ["store", "list", "--organization-id", organization];
-          const output = yield* shopify(args, "pipe");
-          if (output.exitCode !== 0)
-            return yield* new ShopifyCliError({
-              command: output.command,
-              detail: output.stderr.trim(),
-            });
-          const list = yield* Schema.decodeUnknownEffect(StoreList)(
-            output.stdout,
-          ).pipe(
-            Effect.mapError(
-              (issue) =>
-                new ShopifyCliError({
-                  command: output.command,
-                  detail: `berth cannot read its output: ${issue.message}`,
-                }),
-            ),
-          );
-          if (list.truncated === true)
-            return yield* new StoreListTruncatedError({ organization });
-          return list.stores.map((store): OrgStore => ({
-            domain: store.store,
-            name: store.name,
-            type: store.type,
-            plan: store.plan ?? undefined,
-          }));
-        }),
+        listStores,
         createDevStore: Effect.fn("ShopifyCli.createDevStore")(function* (
           organization: OrganizationId,
           name: string,
@@ -244,7 +277,11 @@ export class ShopifyCli extends Context.Service<
             organization,
           ];
           const output = yield* shopify(args, "inherit");
-          if (output.exitCode !== 0)
+          if (output.exitCode !== 0) {
+            // A failed create can still make the store, so a rerun that does
+            // not see it yet would make another at a suffixed domain.
+            const appeared = yield* appearedAs(organization, name);
+            if (Option.isSome(appeared)) return appeared.value;
             return yield* new ShopifyCliError({
               command: output.command,
               detail: Option.match(
@@ -255,6 +292,7 @@ export class ShopifyCli extends Context.Service<
                 },
               ),
             });
+          }
           const created = yield* Schema.decodeUnknownEffect(CreatedStore)(
             output.stdout,
           ).pipe(
