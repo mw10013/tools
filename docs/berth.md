@@ -62,17 +62,18 @@ A typed failure exits 1 and prints `{ "berth": 1, "error": { "_tag": "...", "mes
 }
 ```
 
-`organization` is the numeric id of the Shopify organization that owns the stores. Pool store names are `prefix` and two digits, `00` to `99`, because the apps' devkit `StoreName` allows only two. `stores` lists handles, and berth turns each into the domain `<handle>.myshopify.com`. Every listed store was checked by `pool ensure` to exist in the organization as a dev store on the basic plan. berth reads the file from beside its own source at startup. `acquire`, `show`, `release` and `list` read only `stores` and make no Shopify call.
+`organization` is the numeric id of the Shopify organization that owns the stores. Pool store names are `prefix` and two digits, `00` to `99`, because the apps' devkit `StoreName` allows only two. `stores` lists handles, and berth turns each into the domain `<handle>.myshopify.com`. A file that lists a store twice fails to decode with `SettingsInvalidError`, which names the store, in every command. Every listed store was checked by `pool ensure` to exist in the organization as a dev store on the basic plan. berth reads the file from beside its own source at startup. `acquire`, `show`, `release` and `list` read only `stores` and make no Shopify call.
 
 ### pool ensure
 
 `berth pool ensure [<count>]` makes sure the pool holds at least `<count>` stores. It runs from any directory and needs no `berth.json`. It is the only command that calls the Shopify CLI.
 
-1. It lists the organization's dev stores once, with `shopify store list --type dev --json --no-input --organization-id <organization>`.
+1. It lists every store in the organization once, with `shopify store list --json --no-input --organization-id <organization>`. It passes no `--type`, because `--type dev` hides a listed store of another type, which would then look missing, and a non-dev store that holds a pool name. Measured on 2026-11-05, `--type dev` on organization `130059740` omits `product-health-check.myshopify.com`, a `client-transfer` store.
 2. It checks every listed store by its domain. A store that is missing, not type `dev`, or not plan `basic` fails the run with `PoolStoresUnfitError`, which names each one. berth never repairs or deletes a store.
 3. It adopts every unlisted org store at a pool domain, `<prefix>NN.myshopify.com`, that is a dev store on basic. A run that crashed after a create leaves such a store.
 4. While the pool is smaller than `<count>`, it creates one store at a time with `shopify store create dev --name <prefix>NN --plan basic --organization-id <organization> --json --no-input`. It takes the lowest `NN` that no listed store and no org store uses, by name or domain. A create can take minutes, and the CLI's progress shows on stderr.
 5. After each create, it writes `stores.json` through a temp file and a rename. The store exists before the file lists it, so `acquire` never leases a store that does not exist. A run that fails keeps every store it created. A file that already holds the result is not written.
+6. Each write, the adoptions' included, re-reads `stores.json` and writes the stores on disk, in their order, then this run's stores the disk lacks. A store that a concurrent run wrote meanwhile stays listed. A file whose `organization` or `prefix` changed meanwhile fails the run with `PoolFileChangedError`. The reported `stores` count is the file as last written.
 
 A store Shopify creates at any other domain fails the run with `StoreDomainTakenError`, which names the domain, and stays out of the list. A `<count>` that would need a name past `99` fails with `PoolNamesExhaustedError` before anything is created. With `<count>` at or below the pool's size, or with none, `pool ensure` only checks and adopts: the pool only grows.
 
@@ -90,7 +91,7 @@ Human lines go to stderr: `ok`, `adopted` or `created` with each store's handle,
 }
 ```
 
-A typed failure prints `{ "berth": 1, "error": { "_tag": "...", "message": "..." } }` and exits 1, as the lease commands do. A Shopify CLI command that exits non-zero fails with `ShopifyCliError`. A store list that Shopify truncated, past 250 stores, fails with `StoreListTruncatedError`, because a store missing from it may still exist.
+A typed failure prints `{ "berth": 1, "error": { "_tag": "...", "message": "..." } }` and exits 1, as the lease commands do. A Shopify CLI command fails with `ShopifyCliError` when it cannot start (`shopify is not on PATH`), exits non-zero, or prints output berth cannot read. A create whose output berth cannot read may still have made the store, and the message says so: if the store landed at its pool domain, the next `berth pool ensure` adopts it. A store list that Shopify truncated, past 250 stores, fails with `StoreListTruncatedError`, because a store missing from it may still exist.
 
 ### Add a store outside the pool
 
