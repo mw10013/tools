@@ -22,7 +22,7 @@ export interface Orphan {
 const STOP_GRACE = Duration.seconds(3);
 const STOP_POLL = Duration.millis(100);
 
-const output = (program: string, args: ReadonlyArray<string>) => {
+const output = (program: string, args: readonly string[]) => {
   try {
     return execFileSync(program, args, {
       encoding: "utf8",
@@ -38,10 +38,20 @@ const output = (program: string, args: ReadonlyArray<string>) => {
 /** `ps -A -o pid=,ppid=,comm=` lines, as pid, parent pid and executable. */
 export const parseProcesses = (text: string) =>
   text.split("\n").flatMap((line) => {
-    const match = /^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/u.exec(line);
-    return match === null
+    const fields = /^\s*(?<pid>\d+)\s+(?<ppid>\d+)\s+(?<command>.+?)\s*$/u.exec(
+      line,
+    )?.groups;
+    return fields?.pid === undefined ||
+      fields.ppid === undefined ||
+      fields.command === undefined
       ? []
-      : [{ pid: Number(match[1]), ppid: Number(match[2]), command: match[3]! }];
+      : [
+          {
+            pid: Number(fields.pid),
+            ppid: Number(fields.ppid),
+            command: fields.command,
+          },
+        ];
   });
 
 /** `lsof -Fpn -d cwd` output, as pid to working directory. */
@@ -60,7 +70,7 @@ export const isWithin = (cwd: string, directory: string) =>
   cwd === directory || cwd.startsWith(`${directory}${path.sep}`);
 
 /** The orphans whose working directory is `directory` or inside it. */
-export const orphansIn = (directory: string): ReadonlyArray<Orphan> => {
+export const orphansIn = (directory: string): readonly Orphan[] => {
   const root = fs.realpathSync(directory);
   const parentless = parseProcesses(
     output("ps", ["-A", "-o", "pid=,ppid=,comm="]),
@@ -102,7 +112,7 @@ const signal = (pid: number, name: NodeJS.Signals) => {
 };
 
 /** Sends each orphan SIGTERM, then SIGKILL to any still running after 3 s. */
-export const stopOrphans = (orphans: ReadonlyArray<Orphan>) => {
+export const stopOrphans = (orphans: readonly Orphan[]) => {
   for (const { pid } of orphans) signal(pid, "SIGTERM");
   const deadline = performance.now() + Duration.toMillis(STOP_GRACE);
   let running = orphans.filter(({ pid }) => alive(pid));
