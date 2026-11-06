@@ -42,7 +42,7 @@ const fakeCli = (
   domains: Readonly<Record<string, string>> = {},
 ) =>
   Layer.succeed(ShopifyCli, {
-    listDevStores: () => Effect.succeed([...orgStores]),
+    listStores: () => Effect.succeed([...orgStores]),
     createDevStore: (_, name) =>
       Effect.sync(() => {
         const domain = domains[name] ?? `${name}.myshopify.com`;

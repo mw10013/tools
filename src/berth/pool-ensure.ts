@@ -35,7 +35,7 @@ export const ensure = Effect.fn("PoolEnsure.ensure")(function* (
 ) {
   const shopify = yield* ShopifyCli;
   const listed = yield* loadPool(file);
-  const orgStores = yield* shopify.listDevStores(listed.organization);
+  const orgStores = yield* shopify.listStores(listed.organization);
   const plan = yield* planPool({
     listed: listed.stores,
     orgStores,

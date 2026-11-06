@@ -1,6 +1,6 @@
 /**
  * The store pool: `stores.json` and the pure decisions `berth pool ensure`
- * makes over it. The shell lists the organization's dev stores, hands them in,
+ * makes over it. The shell lists the organization's stores, hands them in,
  * and carries out the {@link PoolPlan}.
  *
  * A store's identity is its domain: Shopify never changes a store's
@@ -66,7 +66,7 @@ export const Pool = Schema.Struct({
 });
 export type Pool = typeof Pool.Type;
 
-/** One entry of `shopify store list --type dev`. */
+/** One entry of `shopify store list`, which lists every type of store. */
 export interface OrgStore {
   readonly domain: string;
   readonly name: string | undefined;

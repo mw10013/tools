@@ -72,7 +72,7 @@ export class StoreListTruncatedError extends Schema.TaggedError<StoreListTruncat
   { organization: Schema.String },
 ) {
   override get message() {
-    return `shopify store list returned only some of organization ${this.organization}'s dev stores, so berth cannot tell which exist`;
+    return `shopify store list returned only some of organization ${this.organization}'s stores, so berth cannot tell which exist`;
   }
 }
 
@@ -126,7 +126,11 @@ const CreateFailure = CliResult(Schema.Struct({ message: Schema.String }));
 export class ShopifyCli extends Context.Service<
   ShopifyCli,
   {
-    readonly listDevStores: (
+    /**
+     * Every store in the organization. `--type dev` would hide a listed store
+     * that is another type, and a pool name a non-dev store holds.
+     */
+    readonly listStores: (
       organization: OrganizationId,
     ) => Effect.Effect<
       ReadonlyArray<OrgStore>,
@@ -172,17 +176,10 @@ export class ShopifyCli extends Context.Service<
         ).pipe(Effect.orDie);
 
       return {
-        listDevStores: Effect.fn("ShopifyCli.listDevStores")(function* (
+        listStores: Effect.fn("ShopifyCli.listStores")(function* (
           organization: OrganizationId,
         ) {
-          const args = [
-            "store",
-            "list",
-            "--type",
-            "dev",
-            "--organization-id",
-            organization,
-          ];
+          const args = ["store", "list", "--organization-id", organization];
           const output = yield* shopify(args, "pipe");
           if (output.exitCode !== 0)
             return yield* new ShopifyCliError({
