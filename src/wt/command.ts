@@ -71,7 +71,15 @@ const create = Command.make(
   },
   ({ words, from, exact }) =>
     run(Worktree.create(".", words, { from, exact }), (created) =>
-      printJson(created),
+      printJson({
+        ...created,
+        t3_thread_launch: {
+          workspaceStrategy: {
+            type: "existing_worktree",
+            worktreePath: created.path,
+          },
+        },
+      }),
     ),
 ).pipe(
   Command.withShortDescription(
