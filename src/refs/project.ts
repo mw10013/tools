@@ -48,6 +48,11 @@ export const sources = {
     dependency: "alchemy",
     tag: "v",
   },
+  distilled: {
+    repository: "alchemy-run/distilled",
+    dependency: "@distilled.cloud/stripe",
+    tag: "v",
+  },
   "shopify-app-js": {
     repository: "Shopify/shopify-app-js",
     dependency: "@shopify/shopify-api",

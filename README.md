@@ -39,6 +39,7 @@ ranges are rejected.
 | `tanstack-form`  | `@tanstack/react-form`             |
 | `better-auth`    | `better-auth`                      |
 | `alchemy`        | `alchemy`                          |
+| `distilled`      | `@distilled.cloud/stripe`          |
 | `playwright`     | `@playwright/test` or `playwright` |
 | `shopify-app-js` | `@shopify/shopify-api`             |
 | `graphql`        | `graphql`                          |
