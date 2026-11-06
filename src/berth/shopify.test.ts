@@ -113,3 +113,43 @@ describe("ShopifyCli.layer", () => {
     });
   });
 });
+
+describe("ShopifyCli.layer failures", () => {
+  const cliError = (detail: string) => ({
+    _tag: "Failure",
+    failure: {
+      _tag: "ShopifyCliError",
+      detail: expect.stringContaining(detail),
+    },
+  });
+
+  it("fails typed when shopify is not on PATH", async () => {
+    const file = stubShopify("exit 0");
+    process.env.PATH = path.dirname(file);
+    expect(await runEnsure(file, 0)).toMatchObject(
+      cliError("shopify is not on PATH"),
+    );
+  });
+
+  it("fails typed when the store list does not decode", async () => {
+    const file = stubShopify("echo not json");
+    expect(await runEnsure(file, 0)).toMatchObject(
+      cliError("berth cannot read its output"),
+    );
+  });
+
+  it("fails typed when a create's output does not decode, saying the next run adopts the store", async () => {
+    const file = stubShopify(
+      `case "$*" in
+  "store list"*) cat all.json ;;
+  *) echo not json ;;
+esac`,
+      { "all.json": { stores: [store("shop-00", "dev", "basic")] } },
+    );
+    expect(await runEnsure(file, 2)).toMatchObject(
+      cliError(
+        "if it is at shop-01.myshopify.com, the next berth pool ensure adopts it",
+      ),
+    );
+  });
+});

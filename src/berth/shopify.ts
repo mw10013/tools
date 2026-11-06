@@ -56,7 +56,11 @@ export const liveSession = Effect.fn("Shopify.liveSession")(function* (
   return Option.none<number>();
 }, Effect.orDie);
 
-/** A Shopify CLI command that exited non-zero: signed out, refused, or timed out. */
+/**
+ * A Shopify CLI command that did not succeed as berth can tell: it could not
+ * start, it exited non-zero (signed out, refused, or timed out), or it printed
+ * output berth cannot read.
+ */
 export class ShopifyCliError extends Schema.TaggedError<ShopifyCliError>()(
   "ShopifyCliError",
   { command: Schema.String, detail: Schema.String },
@@ -152,8 +156,9 @@ export class ShopifyCli extends Context.Service<
       const shopify = (
         args: ReadonlyArray<string>,
         stderr: "pipe" | "inherit",
-      ) =>
-        Effect.scoped(
+      ) => {
+        const command = `shopify ${args.join(" ")}`;
+        return Effect.scoped(
           Effect.gen(function* () {
             const child = yield* spawner.spawn(
               ChildProcess.make("shopify", [...args, "--json", "--no-input"], {
@@ -171,9 +176,26 @@ export class ShopifyCli extends Context.Service<
               ],
               { concurrency: "unbounded" },
             );
-            return { stdout, stderr: errors, exitCode: Number(exitCode) };
+            return {
+              command,
+              stdout,
+              stderr: errors,
+              exitCode: Number(exitCode),
+            };
           }),
-        ).pipe(Effect.orDie);
+        ).pipe(
+          Effect.mapError(
+            (error) =>
+              new ShopifyCliError({
+                command,
+                detail:
+                  error.reason._tag === "NotFound"
+                    ? "shopify is not on PATH"
+                    : error.message,
+              }),
+          ),
+        );
+      };
 
       return {
         listStores: Effect.fn("ShopifyCli.listStores")(function* (
@@ -183,12 +205,20 @@ export class ShopifyCli extends Context.Service<
           const output = yield* shopify(args, "pipe");
           if (output.exitCode !== 0)
             return yield* new ShopifyCliError({
-              command: `shopify ${args.join(" ")}`,
+              command: output.command,
               detail: output.stderr.trim(),
             });
           const list = yield* Schema.decodeUnknownEffect(StoreList)(
             output.stdout,
-          ).pipe(Effect.orDie);
+          ).pipe(
+            Effect.mapError(
+              (issue) =>
+                new ShopifyCliError({
+                  command: output.command,
+                  detail: `berth cannot read its output: ${issue.message}`,
+                }),
+            ),
+          );
           if (list.truncated === true)
             return yield* new StoreListTruncatedError({ organization });
           return list.stores.map((store): OrgStore => ({
@@ -216,7 +246,7 @@ export class ShopifyCli extends Context.Service<
           const output = yield* shopify(args, "inherit");
           if (output.exitCode !== 0)
             return yield* new ShopifyCliError({
-              command: `shopify ${args.join(" ")}`,
+              command: output.command,
               detail: Option.match(
                 Schema.decodeUnknownOption(CreateFailure)(output.stdout),
                 {
@@ -227,7 +257,15 @@ export class ShopifyCli extends Context.Service<
             });
           const created = yield* Schema.decodeUnknownEffect(CreatedStore)(
             output.stdout,
-          ).pipe(Effect.orDie);
+          ).pipe(
+            Effect.mapError(
+              (issue) =>
+                new ShopifyCliError({
+                  command: output.command,
+                  detail: `berth cannot read its output, so the store may exist; if it is at ${name}.myshopify.com, the next berth pool ensure adopts it (${issue.message})`,
+                }),
+            ),
+          );
           return created.store.domain;
         }),
       };
