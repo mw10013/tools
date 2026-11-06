@@ -13,6 +13,12 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import {
+  describeOrphan,
+  orphansIn,
+  stopOrphans,
+} from "#devkit/core/orphans.ts";
+
 import * as Git from "./git.ts";
 import { firstFree, fromWords, NAME_MAX, type WorktreeName } from "./name.ts";
 import { run, stream } from "./process.ts";
@@ -288,6 +294,16 @@ export const remove = Effect.fn("Worktree.remove")(function* (
   if (yield* fs.exists(path.join(worktree.path, "berth.json"))) {
     yield* stream(worktree.path, "berth", ["release"]);
     steps.push("berth release");
+  }
+  // What is still running inside the worktree with no owner, a leaked workerd for one, would
+  // keep working in a directory that no longer exists.
+  const orphans = yield* Effect.sync(() => orphansIn(worktree.path));
+  if (orphans.length > 0) {
+    yield* Effect.sync(() => stopOrphans(orphans));
+    yield* Console.error(
+      `wt: stopped what ${worktree.path} left running: ${orphans.map(describeOrphan).join(", ")}`,
+    );
+    steps.push("stopped orphans");
   }
   yield* run(repository.root, "git", ["worktree", "remove", worktree.path]);
   steps.push("git worktree remove");
