@@ -106,3 +106,74 @@ describe("ensure", () => {
     expect(fs.statSync(file).ino).toBe(before);
   });
 });
+
+/** A run paused inside `shopify store list`, holding the org as it was then. */
+const pausedRun = (file: string, orgStores: ReadonlyArray<OrgStore>) => {
+  let listed!: () => void;
+  let resume!: () => void;
+  const paused = new Promise<void>((resolve) => {
+    listed = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const snapshot = [...orgStores];
+  const result = Effect.runPromise(
+    ensure(file, Option.none()).pipe(
+      Effect.result,
+      Effect.provide(
+        Layer.merge(
+          Layer.succeed(ShopifyCli, {
+            listStores: () =>
+              Effect.promise(async () => {
+                listed();
+                await gate;
+                return snapshot;
+              }),
+            createDevStore: () => Effect.die("a check creates nothing"),
+          }),
+          NodeServices.layer,
+        ),
+      ),
+    ),
+  );
+  return { paused, resume, result };
+};
+
+describe("ensure beside a concurrent run", () => {
+  it("keeps a store that a parallel run created after this run loaded the file", async () => {
+    const file = storesFile(["shop-00"]);
+    const orgStores = [devStore("shop-00")];
+    const check = pausedRun(file, orgStores);
+    await check.paused;
+    await run(file, 2, fakeCli(orgStores));
+    check.resume();
+    expect(await check.result).toMatchObject({
+      _tag: "Success",
+      success: {
+        pool: { stores: ["shop-00.myshopify.com", "shop-01.myshopify.com"] },
+      },
+    });
+    expect(listed(file)).toEqual(["shop-00", "shop-01"]);
+  });
+
+  it("fails typed when the file on disk names another organization", async () => {
+    const file = storesFile(["shop-00"]);
+    const check = pausedRun(file, [devStore("shop-00"), devStore("shop-01")]);
+    await check.paused;
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ organization: "2", prefix: "shop-", stores: [] }),
+    );
+    check.resume();
+    expect(await check.result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "PoolFileChangedError",
+        organization: "1",
+        foundOrganization: "2",
+      },
+    });
+    expect(listed(file)).toEqual([]);
+  });
+});

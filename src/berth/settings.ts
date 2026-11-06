@@ -97,23 +97,57 @@ export const loadPool = Effect.fn("Settings.loadPool")(function* (
   );
 });
 
+/** Another writer changed `stores.json` to a different pool while this run held it. */
+export class PoolFileChangedError extends Schema.TaggedError<PoolFileChangedError>()(
+  "PoolFileChangedError",
+  {
+    file: Schema.String,
+    organization: Schema.String,
+    prefix: Schema.String,
+    foundOrganization: Schema.String,
+    foundPrefix: Schema.String,
+  },
+) {
+  override get message() {
+    return `${this.file} now names organization ${this.foundOrganization} and prefix ${this.foundPrefix}, not the ${this.organization} and ${this.prefix} this run loaded; run berth pool ensure again`;
+  }
+}
+
 /**
- * Writes through a temp file and a rename, so a reader never sees a partial
- * file. Returns whether the file changed: one that already holds `pool` is not
- * written.
+ * Writes the stores on disk, then those of `pool` the disk lacks, so a
+ * concurrent run's stores survive. Writes through a temp file and a rename, so
+ * a reader never sees a partial file. Returns the pool written and whether the
+ * file changed: one that already holds it is not written.
  */
 export const savePool = Effect.fn("Settings.savePool")(function* (
   file: string,
   pool: Pool,
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const text = poolText(pool);
-  if ((yield* fs.readFileString(file)) === text) return false;
+  const disk = yield* loadPool(file);
+  if (disk.organization !== pool.organization || disk.prefix !== pool.prefix)
+    return yield* new PoolFileChangedError({
+      file,
+      organization: pool.organization,
+      prefix: pool.prefix,
+      foundOrganization: disk.organization,
+      foundPrefix: disk.prefix,
+    });
+  const merged: Pool = {
+    ...disk,
+    stores: [
+      ...disk.stores,
+      ...pool.stores.filter((store) => !disk.stores.includes(store)),
+    ],
+  };
+  const text = poolText(merged);
+  if ((yield* fs.readFileString(file).pipe(Effect.orDie)) === text)
+    return { pool: merged, changed: false };
   const temp = `${file}.${String(process.pid)}.tmp`;
-  yield* fs.writeFileString(temp, text);
-  yield* fs.rename(temp, file);
-  return true;
-}, Effect.orDie);
+  yield* fs.writeFileString(temp, text).pipe(Effect.orDie);
+  yield* fs.rename(temp, file).pipe(Effect.orDie);
+  return { pool: merged, changed: true };
+});
 
 const xdgDirectory = (variable: string, fallback: string) =>
   Effect.gen(function* () {

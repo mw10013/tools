@@ -27,7 +27,8 @@ export interface Ensured {
 /**
  * Creates one store at a time and writes `stores.json` after each, so a
  * failed run keeps every store it made and `acquire` never sees a store that
- * does not exist.
+ * does not exist. Each write keeps the stores a concurrent run wrote meanwhile,
+ * and the result is the pool last written.
  */
 export const ensure = Effect.fn("PoolEnsure.ensure")(function* (
   file: string,
@@ -47,8 +48,11 @@ export const ensure = Effect.fn("PoolEnsure.ensure")(function* (
   for (const domain of plan.adopt)
     yield* Console.error(`adopted  ${handleOf(domain)}`);
 
-  let pool: Pool = { ...listed, stores: [...listed.stores, ...plan.adopt] };
-  let changed = yield* savePool(file, pool);
+  let saved = yield* savePool(file, {
+    ...listed,
+    stores: [...listed.stores, ...plan.adopt],
+  });
+  let changed = saved.changed;
   const created: Array<StoreDomain> = [];
   const commitHint = Effect.suspend(() =>
     changed
@@ -61,10 +65,13 @@ export const ensure = Effect.fn("PoolEnsure.ensure")(function* (
       if (domain !== domainOf(name))
         return yield* new StoreDomainTakenError({ name, domain });
       created.push(domainOf(name));
-      pool = { ...pool, stores: [...pool.stores, domainOf(name)] };
-      changed = (yield* savePool(file, pool)) || changed;
+      saved = yield* savePool(file, {
+        ...saved.pool,
+        stores: [...saved.pool.stores, domainOf(name)],
+      });
+      changed = saved.changed || changed;
       yield* Console.error(`created  ${name}`);
     }
   }).pipe(Effect.ensuring(commitHint));
-  return { pool, adopted: plan.adopt, created } satisfies Ensured;
+  return { pool: saved.pool, adopted: plan.adopt, created } satisfies Ensured;
 });
