@@ -208,7 +208,7 @@ and logs, with each server publishing the port it picked. See
 
 ## Dev stores
 
-`berth` leases Shopify dev stores from the fixed list in `stores.json` to each
+`berth` leases Shopify dev stores from the pool in `stores.json` to each
 checkout and env, so no two Shopify app checkouts on one machine share a store.
 Ports are not berth's: each dev server runs under bosun and picks its own. The
 design is in [docs/berth.md](docs/berth.md).
@@ -260,8 +260,8 @@ rerun writes nothing. A typed failure exits 1 with
 exits 2.
 
 - `StorePoolExhaustedError`: every store in `stores.json` is leased. Release
-  a lease, or create a store in Shopify and add its handle to `stores.json`.
-  berth never creates or deletes a store.
+  a lease, or grow the pool with `berth pool ensure <count>`. berth never
+  deletes a store.
 - `LeaseInUseError`: this checkout's `shopify app dev` runs on the store. Stop
   it, then release.
 
@@ -271,9 +271,19 @@ next holder's `shopify app dev` replaces the store's dev preview.
 
 ### The store pool
 
-`stores.json` at the repository root is a JSON array of store handles, such as
-`"mw10013-pool-00"`. berth leases `<handle>.myshopify.com` for each, first free
-in list order.
+`stores.json` at the repository root names the Shopify organization, the pool's
+name prefix and the store handles, such as `"mw10013-pool-00"`. berth leases
+`<handle>.myshopify.com` for each, first free in list order. Only
+`berth pool ensure` writes it:
+
+```sh
+berth pool ensure                         # check every listed store, adopt strays
+berth pool ensure 16                      # also create stores until the pool holds 16
+```
+
+It creates each store with the Shopify CLI, then lists it, so commit
+`stores.json` after a run that changed it. See
+[docs/berth.md](docs/berth.md#pool-ensure).
 
 ### Machine config
 

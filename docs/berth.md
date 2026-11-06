@@ -1,6 +1,6 @@
 # berth
 
-berth leases Shopify dev stores, so many Shopify apps and checkouts run side by side on one machine without two of them sharing a store. The stores come from a fixed list, `stores.json` at the root of this repository. A lease belongs to one checkout and one environment, and it lasts until the checkout releases it or its directory disappears. berth leases no ports: each dev server runs under bosun and picks its own.
+berth leases Shopify dev stores, so many Shopify apps and checkouts run side by side on one machine without two of them sharing a store. The stores come from `stores.json` at the root of this repository, which `berth pool ensure` writes. A lease belongs to one checkout and one environment, and it lasts until the checkout releases it or its directory disappears. berth leases no ports: each dev server runs under bosun and picks its own.
 
 ## Usage
 
@@ -25,6 +25,7 @@ berth acquire <env> [--adopt store=<handle>]   # ensure and print this checkout'
 berth show <env>                               # print this checkout's lease, or null; never creates one
 berth release [<env>]                          # free this checkout's leases
 berth list [--json]                            # who holds which stores, across all projects
+berth pool ensure [<count>]                    # check stores.json against Shopify; grow the pool to <count>
 ```
 
 - `acquire` is idempotent. The same checkout and env always get the same store. When the env's `store.config` changes, `acquire` updates the lease's config and keeps the store. It drops a held store that `stores.json` no longer lists and grants a listed one.
@@ -51,7 +52,57 @@ berth list [--json]                            # who holds which stores, across 
 
 A typed failure exits 1 and prints `{ "berth": 1, "error": { "_tag": "...", "message": "..." } }`. When every listed store is leased, `acquire` fails with `StorePoolExhaustedError`, whose `stores` field is the list's length: "all 14 stores in stores.json are leased". A usage error exits 2. Version 1 only grows: fields are added, never renamed. The one removal is `ports`, dropped with port leasing on 2026-11-03, when no consumer read it.
 
-`stores.json` is a JSON array of store handles, `["mw10013-pool-00", …]`. berth turns each into the domain `<handle>.myshopify.com` and reads the file from beside its own source at startup. To grow the pool, create the store in Shopify and add its handle to the list. berth makes no Shopify call that lists or creates stores.
+`stores.json` is written by `berth pool ensure` only. Nobody edits it by hand.
+
+```json
+{
+  "organization": "130059740",
+  "prefix": "mw10013-pool-",
+  "stores": ["mw10013-pool-00", "mw10013-pool-01"]
+}
+```
+
+`organization` is the numeric id of the Shopify organization that owns the stores. Pool store names are `prefix` and two digits, `00` to `99`, because the apps' devkit `StoreName` allows only two. `stores` lists handles, and berth turns each into the domain `<handle>.myshopify.com`. Every listed store was checked by `pool ensure` to exist in the organization as a dev store on the basic plan. berth reads the file from beside its own source at startup. `acquire`, `show`, `release` and `list` read only `stores` and make no Shopify call.
+
+### pool ensure
+
+`berth pool ensure [<count>]` makes sure the pool holds at least `<count>` stores. It runs from any directory and needs no `berth.json`. It is the only command that calls the Shopify CLI.
+
+1. It lists the organization's dev stores once, with `shopify store list --type dev --json --no-input --organization-id <organization>`.
+2. It checks every listed store by its domain. A store that is missing, not type `dev`, or not plan `basic` fails the run with `PoolStoresUnfitError`, which names each one. berth never repairs or deletes a store.
+3. It adopts every unlisted org store at a pool domain, `<prefix>NN.myshopify.com`, that is a dev store on basic. A run that crashed after a create leaves such a store.
+4. While the pool is smaller than `<count>`, it creates one store at a time with `shopify store create dev --name <prefix>NN --plan basic --organization-id <organization> --json --no-input`. It takes the lowest `NN` that no listed store and no org store uses, by name or domain. A create can take minutes, and the CLI's progress shows on stderr.
+5. After each create, it writes `stores.json` through a temp file and a rename. The store exists before the file lists it, so `acquire` never leases a store that does not exist. A run that fails keeps every store it created. A file that already holds the result is not written.
+
+A store Shopify creates at any other domain fails the run with `StoreDomainTakenError`, which names the domain, and stays out of the list. A `<count>` that would need a name past `99` fails with `PoolNamesExhaustedError` before anything is created. With `<count>` at or below the pool's size, or with none, `pool ensure` only checks and adopts: the pool only grows.
+
+Human lines go to stderr: `ok`, `adopted` or `created` with each store's handle, and, when the file changed, a last line saying to commit `stores.json` in `~/projects/tools`. stdout gets one JSON object.
+
+```json
+{
+  "berth": 1,
+  "pool": {
+    "organization": "130059740",
+    "stores": 16,
+    "adopted": [],
+    "created": ["mw10013-pool-14", "mw10013-pool-15"]
+  }
+}
+```
+
+A typed failure prints `{ "berth": 1, "error": { "_tag": "...", "message": "..." } }` and exits 1, as the lease commands do. A Shopify CLI command that exits non-zero fails with `ShopifyCliError`. A store list that Shopify truncated, past 250 stores, fails with `StoreListTruncatedError`, because a store missing from it may still exist.
+
+### Add a store outside the pool
+
+A store that is not a pool store, such as one that needs `plus`, is created by hand and never listed in `stores.json`.
+
+```sh
+shopify store create dev --name mw10013-<purpose>-shop-NN --plan <plan> --organization-id 130059740
+```
+
+- Decide the plan first. A store's plan cannot change after creation.
+- Check that the returned domain is exactly the name plus `.myshopify.com`. A taken name does not fail. The store gets a suffixed domain.
+- Never delete a store you mean to keep. Its name does not come back.
 
 Machine policy is `~/.config/berth/config.json`, and its one field is optional. `machine` defaults to the host name without `.local`.
 
@@ -69,7 +120,7 @@ Machine policy is `~/.config/berth/config.json`, and its one field is optional. 
 
 **No ports.** berth leased ports until 2026-11-03. Every app's dev server now runs under bosun, binds a port it picks, and publishes it, so berth dropped `ports`, `--bindable`, `PortBusyError`, `PortsExhaustedError`, the port range, and the reserved ports.
 
-**Stores.** `pickStore` takes the first store in `stores.json` that no lease holds. Any env of any project may lease any listed store. berth never creates or deletes a store, because store domains are global and permanent.
+**Stores.** `pickStore` takes the first store in `stores.json` that no lease holds. Any env of any project may lease any listed store. `pool ensure` creates stores but never deletes one, because store domains are global and permanent. `stores.json` lists only stores that `pool ensure` checked exist as dev stores on basic, so it writes a created store only after Shopify returns its exact domain. The decisions are pure: `planPool` in `pool.ts` takes the listed stores, the org's stores, the prefix and the count, and returns the adoptions and the names to create, or the typed failure. The shell runs the CLI and writes the file. A store is known by its domain, which Shopify never changes after creation ([Development stores](https://shopify.dev/docs/apps/build/stores/development-stores)), not by its name, which can differ from it: the org's `stress-shop-01.myshopify.com` is named `Stress Shop 01`.
 
 **No dev preview clean.** berth used to run `shopify app dev clean` whenever a store left a checkout. It no longer does. On 2026-11-03 a motio worktree ran its e2e suite on `mw10013-pool-07` and was removed with no clean. A second worktree then leased the same store, started its e2e server and passed all 21 tests, because its `shopify app dev` installed its own dev preview over the old one.
 
@@ -77,7 +128,7 @@ Machine policy is `~/.config/berth/config.json`, and its one field is optional. 
 
 **Machines.** `machine` is in the lease key. The sweep only judges this machine's leases. A shared store pool later is another implementation of the ledger's `modify`, such as a row with a version column.
 
-**Not done.** No time-based expiry, no store creation or deletion, no daemon, no env injection or exec wrapper, no `.env` writing.
+**Not done.** No time-based expiry, no store deletion or repair, no daemon, no env injection or exec wrapper, no `.env` writing.
 
 ## Consumers
 
