@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -6,7 +6,7 @@ import * as path from "node:path";
 import * as Option from "effect/Option";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { RunId, runOutput, ServerName, stateOf } from "./domain.ts";
+import { listenerOf, RunId, runOutput, ServerName, stateOf } from "./domain.ts";
 
 const ENTRY = path.resolve(import.meta.dirname, "../../bosun.ts");
 
@@ -15,6 +15,10 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 if (process.argv[2] === "crash") { console.log("crashing on purpose"); process.exit(7); }
+if (process.argv[2] === "publish") {
+  writeFileSync(process.env.BOSUN_ENDPOINT, JSON.stringify({ port: Number(process.argv[3]) }));
+  setInterval(() => {}, 1000);
+} else {
 spawn("sleep", ["600"], { stdio: "ignore" });
 const server = http.createServer((_, res) => res.end("hi"));
 server.listen(0, "127.0.0.1", () => {
@@ -24,6 +28,7 @@ server.listen(0, "127.0.0.1", () => {
   writeFileSync(process.env.BOSUN_ENDPOINT, JSON.stringify({ port, url: "http://x.test/" + port }));
 });
 if (process.argv[2] !== "no-handler") process.on("SIGTERM", () => { console.log("got SIGTERM"); server.close(() => process.exit(0)); });
+}
 `;
 
 let checkout: string;
@@ -120,6 +125,45 @@ describe("bosun", () => {
     expect(crashed.json.error.message).toContain("code=7");
   }, 60_000);
 
+  it("fails a start whose published port another process holds, and stops the server", async () => {
+    const elsewhere = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "bosun-holder-")),
+    );
+    const holder = spawn(
+      "node",
+      [
+        "-e",
+        'require("http").createServer((_, res) => res.end("not yours")).listen(0, "127.0.0.1", function () { console.log(this.address().port); })',
+      ],
+      { cwd: elsewhere, stdio: ["ignore", "pipe", "inherit"] },
+    );
+    try {
+      const port = await new Promise<string>((resolve) =>
+        holder.stdout.once("data", (chunk: Buffer) =>
+          resolve(chunk.toString().trim()),
+        ),
+      );
+      const taken = bosun(
+        "start",
+        "dev",
+        "--",
+        "node",
+        "server.mjs",
+        "publish",
+        port,
+      );
+      expect(taken.code).toBe(1);
+      expect(taken.json.error._tag).toBe("PortTakenError");
+      expect(taken.json.error.message).toContain(`port ${port}`);
+      expect(taken.json.error.message).toContain(`pid ${holder.pid} (node -e`);
+      expect(taken.json.error.message).toContain(` in ${elsewhere}`);
+      expect(bosun("status", "dev").json.state).toBe("stopped");
+    } finally {
+      holder.kill();
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("stops an orphaned server before starting a new one", () => {
     const started = bosun("start", "dev", "--", "node", "server.mjs");
     process.kill(started.json.pid, "SIGKILL");
@@ -183,5 +227,30 @@ describe("stateOf", () => {
     expect(
       stateOf(record, { runner: true, group: true, answering: false }),
     ).toBe("starting");
+  });
+});
+
+describe("listenerOf", () => {
+  const command = 100;
+  const parents = new Map([
+    [100, 50],
+    [101, 100],
+    [102, 101],
+    [200, 1],
+  ]);
+
+  it("counts a listener that descends from the command as the server, though it left its group", () => {
+    expect(listenerOf([102], parents, command)).toEqual({ _tag: "Server" });
+  });
+
+  it("reads any listener outside the command's tree as taken", () => {
+    expect(listenerOf([101, 200], parents, command)).toEqual({
+      _tag: "Taken",
+      pids: [200],
+    });
+  });
+
+  it("reads a port whose listeners have all exited as free", () => {
+    expect(listenerOf([300], parents, command)).toEqual({ _tag: "Free" });
   });
 });

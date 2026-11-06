@@ -19,7 +19,9 @@ bosun logs <name> [-n lines] [-f]
 - `start` adopts the checkout's running server of that name, or launches the
   command detached, then waits until it answers (3 minutes by default). It
   prints the server's status JSON. A server that exits first fails the start
-  with `ServerExitedError` and that run's log lines.
+  with `ServerExitedError` and that run's log lines. A published port that
+  another process holds fails the start with `PortTakenError`, which names the
+  holder's pid, command and working directory, and stops the server.
 - `status` prints the status JSON. It exits 0 when the server answers and 3
   otherwise.
 - `stop` sends SIGTERM to the command's process group, waits for the exit to
@@ -34,8 +36,11 @@ servers; one checkout has one agent, so that does not arise.
 
 bosun gives the command `BOSUN_ENDPOINT`, a file path. Once the command knows
 where it listens, it writes `{"port": <n>, "url": "<optional public url>"}`
-there. bosun counts the server as running once that port answers any HTTP
-request. For a Shopify app, the web command can write it from the variables
+there. bosun counts the server as running once the command, or one of its
+descendants, listens on that port and the port answers any HTTP request. A
+descendant counts though it left the command's process group, as Alchemy's dev
+server does. Anything else listening there means the port was taken between
+the moment the command chose it and the moment it bound it. For a Shopify app, the web command can write it from the variables
 Shopify CLI hands it:
 
 ```sh
@@ -59,7 +64,8 @@ printf '{"port":%s,"url":"%s"}' "$BACKEND_PORT" "$APP_URL" > "$BOSUN_ENDPOINT"
 }
 ```
 
-`state` is `running`, `starting`, `stopped` or `orphaned`. An orphaned server's
+`state` is `running`, `starting`, `stopped` or `orphaned`. A server whose
+port another process holds reads `starting`. An orphaned server's
 runner died while its command lives on; `stop` ends it and `start` replaces it.
 The fields other than `bosun`, `name`, `state` and `log` are null when stopped.
 A typed failure prints `{ "bosun": 1, "error": { "_tag", "message" } }` and

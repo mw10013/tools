@@ -233,6 +233,20 @@ const BosunFailure = Schema.Struct({
   error: Schema.Struct({ _tag: Schema.String, message: Schema.String }),
 });
 
+/**
+ * bosun refused the start: another process holds the port the server published. Shopify CLI
+ * probes a free port, releases it and hands it to the web command, which binds it later, so
+ * another process can take it in between. A new start gets a new port.
+ */
+export class PortTakenError extends Schema.TaggedError<PortTakenError>()(
+  "PortTakenError",
+  { report: Schema.String },
+) {
+  override get message() {
+    return this.report;
+  }
+}
+
 const decodeBosunOutput = Schema.decodeUnknownResult(
   Schema.fromJsonString(Schema.Union([BosunStatus, BosunFailure])),
 );
@@ -244,10 +258,32 @@ export const bosunOutput = (args: readonly string[], stdout: string) => {
       fail(`bosun ${args.join(" ")} printed no status; its stderr says why`),
     );
   const value = output.success;
-  return "error" in value
-    ? Result.fail(fail(value.error.message))
-    : Result.succeed(value);
+  if (!("error" in value)) return Result.succeed(value);
+  return Result.fail(
+    value.error._tag === "PortTakenError"
+      ? new PortTakenError({ report: value.error.message })
+      : fail(value.error.message),
+  );
 };
+
+/** Starts after the first whose port was taken. */
+const PORT_TAKEN_RETRIES = 2;
+
+/** Starts again while bosun refuses a start because another process took its port. */
+export const retryPortTaken = <A, E, R>(
+  start: Effect.Effect<A, E | PortTakenError, R>,
+) =>
+  start.pipe(
+    Effect.tapError((error) =>
+      error instanceof PortTakenError
+        ? Console.error(`warn  ${error.report}`)
+        : Effect.void,
+    ),
+    Effect.retry({
+      while: (error) => error instanceof PortTakenError,
+      times: PORT_TAKEN_RETRIES,
+    }),
+  );
 
 const bosun = Effect.fn("Server.bosun")(function* (args: readonly string[]) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -330,7 +366,8 @@ export const runningServerSync = (
 const APP_CONFIG = "shopify.app.toml";
 
 /**
- * Without `BACKEND_PORT`, the CLI picks the web port itself. GraphiQL is off: its server prefers port 3457, so two servers
+ * Without `BACKEND_PORT`, the CLI picks the web port itself, and a start whose port another
+ * process took in the meantime starts again ({@link PortTakenError}). GraphiQL is off: its server prefers port 3457, so two servers
  * starting at once would both take it and the second would exit with `EADDRINUSE`.
  */
 export const startServer = Effect.fn("Server.startServer")(function* (
@@ -342,23 +379,25 @@ export const startServer = Effect.fn("Server.startServer")(function* (
       .copyFile(path.join(ROOT, APP_CONFIG), path.join(ROOT, server.config))
       .pipe(Effect.mapError((error) => fail(error.message)));
   }
-  const status = yield* bosun([
-    "start",
-    server.environment,
-    "--note",
-    `stage=${server.stage} store=${server.store}`,
-    "--",
-    "env",
-    `SANDBOX_ENVIRONMENT=${server.environment}`,
-    "SHOPIFY_CLI_DISABLE_GRAPHIQL=1",
-    "shopify",
-    "app",
-    "dev",
-    "--config",
-    server.config,
-    "--store",
-    server.store,
-  ]);
+  const status = yield* retryPortTaken(
+    bosun([
+      "start",
+      server.environment,
+      "--note",
+      `stage=${server.stage} store=${server.store}`,
+      "--",
+      "env",
+      `SANDBOX_ENVIRONMENT=${server.environment}`,
+      "SHOPIFY_CLI_DISABLE_GRAPHIQL=1",
+      "shopify",
+      "app",
+      "dev",
+      "--config",
+      server.config,
+      "--store",
+      server.store,
+    ]),
+  );
   return yield* Effect.fromOption(runningOf(status)).pipe(
     Effect.mapError(() => notRunning(server.environment)),
   );

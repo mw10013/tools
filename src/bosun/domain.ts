@@ -111,6 +111,50 @@ export const runOutput = (
     : Option.some(body.slice(-RUN_OUTPUT_LINES).join("\n"));
 };
 
+/**
+ * Who listens on the server's published port. A command may start its listener detached, in a
+ * process group of its own (Alchemy does), so the server is the command and its descendants,
+ * not its group.
+ */
+export type PortListener =
+  | { readonly _tag: "Free" }
+  | { readonly _tag: "Server" }
+  | { readonly _tag: "Taken"; readonly pids: ReadonlyArray<number> };
+
+/** Deeper than any real process tree; it ends the walk should `parents` hold a cycle. */
+const MAX_ANCESTRY = 256;
+
+const descends = (
+  pid: number,
+  ancestor: number,
+  parents: ReadonlyMap<number, number>,
+) => {
+  let current: number | undefined = pid;
+  for (let step = 0; current !== undefined && step < MAX_ANCESTRY; step++) {
+    if (current === ancestor) return true;
+    if (current <= 1) return false;
+    current = parents.get(current);
+  }
+  return false;
+};
+
+/**
+ * Reads the port's listening pids against the process table (`parents`, pid to parent pid). A
+ * pid missing from the table exited after it was listed, so it holds nothing.
+ */
+export const listenerOf = (
+  listening: ReadonlyArray<number>,
+  parents: ReadonlyMap<number, number>,
+  command: number,
+): PortListener => {
+  const live = listening.filter((pid) => parents.has(pid));
+  if (live.length === 0) return { _tag: "Free" };
+  const foreign = live.filter((pid) => !descends(pid, command, parents));
+  return foreign.length === 0
+    ? { _tag: "Server" }
+    : { _tag: "Taken", pids: foreign };
+};
+
 export const ServerState = Schema.Literals([
   "running",
   "starting",
@@ -122,6 +166,7 @@ export type ServerState = typeof ServerState.Type;
 export interface Sighting {
   readonly runner: boolean;
   readonly group: boolean;
+  /** The server itself listens on its published port and answers HTTP there. */
   readonly answering: boolean;
 }
 

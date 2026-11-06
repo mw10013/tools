@@ -27,6 +27,8 @@ import {
   EndpointJson,
   exitMarker,
   files,
+  listenerOf,
+  type PortListener,
   RunId,
   runOutput,
   type ServerName,
@@ -80,6 +82,20 @@ export class StartTimeoutError extends Schema.TaggedError<StartTimeoutError>()(
   }
 }
 
+export class PortTakenError extends Schema.TaggedError<PortTakenError>()(
+  "PortTakenError",
+  {
+    name: Schema.String,
+    run: Schema.String,
+    port: Schema.Int,
+    holders: Schema.Array(Schema.String),
+  },
+) {
+  override get message() {
+    return `port ${String(this.port)}, which the ${this.name} server published, is held by another process, so the server was stopped (run ${this.run}):\n${this.holders.join("\n")}`;
+  }
+}
+
 export class StopTimeoutError extends Schema.TaggedError<StopTimeoutError>()(
   "StopTimeoutError",
   { name: Schema.String, group: Schema.Int },
@@ -124,6 +140,64 @@ const commandLine = Effect.fn("Bosun.commandLine")(function* (pid: number) {
     )
     .pipe(Effect.orElseSucceed(() => ""));
   return text.trim();
+});
+
+const output = Effect.fn("Bosun.output")(function* (
+  program: string,
+  args: ReadonlyArray<string>,
+) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  return yield* spawner
+    .string(ChildProcess.make(program, args, { stdin: "ignore" }))
+    .pipe(Effect.orElseSucceed(() => ""));
+});
+
+const numbers = (text: string) =>
+  text
+    .split("\n")
+    .flatMap((line) => line.trim().split(/\s+/u))
+    .filter((field) => field !== "")
+    .map(Number);
+
+/** Every pid listening on TCP `port`, on any address. `lsof` prints nothing when none does. */
+const listeningPids = (port: number) =>
+  output("lsof", ["-nP", "-t", `-iTCP:${String(port)}`, "-sTCP:LISTEN"]).pipe(
+    Effect.map(numbers),
+  );
+
+const processTable = output("ps", ["-A", "-o", "pid=,ppid="]).pipe(
+  Effect.map((text) => {
+    const fields = numbers(text);
+    const parents = new Map<number, number>();
+    for (let index = 0; index + 1 < fields.length; index += 2)
+      parents.set(fields[index]!, fields[index + 1]!);
+    return parents;
+  }),
+);
+
+const portListener = Effect.fn("Bosun.portListener")(function* (
+  port: number,
+  command: number,
+) {
+  const listening = yield* listeningPids(port);
+  if (listening.length === 0) return { _tag: "Free" } satisfies PortListener;
+  return listenerOf(listening, yield* processTable, command);
+});
+
+/** `pid 61359 (workerd serve …) in /path/to/its/checkout`, for a failure's message. */
+const holderOf = Effect.fn("Bosun.holderOf")(function* (pid: number) {
+  const cwd = (yield* output("lsof", [
+    "-a",
+    "-p",
+    String(pid),
+    "-d",
+    "cwd",
+    "-Fn",
+  ]))
+    .split("\n")
+    .find((line) => line.startsWith("n"))
+    ?.slice(1);
+  return `pid ${String(pid)} (${(yield* commandLine(pid)).slice(0, 120)})${cwd === undefined ? "" : ` in ${cwd}`}`;
 });
 
 const runnerAlive = Effect.fn("Bosun.runnerAlive")(function* (
@@ -359,26 +433,36 @@ export interface StatusJson {
   readonly log: string;
 }
 
-export const status = Effect.fn("Bosun.status")(function* (
+/**
+ * The server's status, and who listens on its published port. The port counts as the server's
+ * only when the command or one of its descendants listens there: anything answers HTTP on a port
+ * another process holds.
+ */
+const sight = Effect.fn("Bosun.sight")(function* (
   root: string,
   name: ServerName,
 ) {
   const record = yield* readRecord(root, name);
   const endpoint = yield* readEndpoint(root, name);
+  const listener: PortListener =
+    Option.isSome(record) && Option.isSome(endpoint)
+      ? yield* portListener(endpoint.value.port, record.value.group)
+      : { _tag: "Free" };
   const seen = Option.isNone(record)
     ? { runner: false, group: false, answering: false }
     : {
         runner: yield* runnerAlive(record.value),
         group: yield* groupAlive(record.value.group),
-        answering: Option.isSome(endpoint)
-          ? yield* answering(endpoint.value.port)
-          : false,
+        answering:
+          listener._tag === "Server" && Option.isSome(endpoint)
+            ? yield* answering(endpoint.value.port)
+            : false,
       };
   const state = stateOf(record, seen);
   const live = state !== "stopped";
   const recorded = live ? Option.getOrUndefined(record) : undefined;
   const published = live ? Option.getOrUndefined(endpoint) : undefined;
-  return {
+  const status: StatusJson = {
     bosun: 1,
     name,
     state,
@@ -389,8 +473,12 @@ export const status = Effect.fn("Bosun.status")(function* (
     port: published?.port ?? null,
     url: published?.url ?? null,
     log: files(name).log,
-  } satisfies StatusJson;
+  };
+  return { status, listener };
 });
+
+export const status = (root: string, name: ServerName) =>
+  sight(root, name).pipe(Effect.map(({ status }) => status));
 
 const runOutputOf = Effect.fn("Bosun.runOutputOf")(function* (
   root: string,
@@ -416,8 +504,19 @@ const waitAnswering = Effect.fn("Bosun.waitAnswering")(function* (
 ) {
   const deadline = DateTime.addDuration(yield* DateTime.now, timeout);
   while (true) {
-    const now = yield* status(root, name);
+    const { status: now, listener } = yield* sight(root, name);
     if (now.state === "running") return now;
+    if (listener._tag === "Taken" && now.run === runId && now.port !== null) {
+      const holders = yield* Effect.forEach(listener.pids, holderOf);
+      const record = yield* readRecord(root, name);
+      if (Option.isSome(record)) yield* stopRecorded(root, name, record.value);
+      return yield* new PortTakenError({
+        name,
+        run: runId,
+        port: now.port,
+        holders,
+      });
+    }
     if (now.state !== "starting" || now.run !== runId) {
       return yield* new ServerExitedError({
         name,

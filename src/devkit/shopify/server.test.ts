@@ -1,11 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 
 import {
   bosunOutput,
+  PortTakenError,
+  retryPortTaken,
   runningOf,
+  ServerError,
   tunnelErrorMessage,
   tunnelServes,
 } from "./server.ts";
@@ -124,4 +128,57 @@ describe("bosun status", () => {
         "bosun status e2e printed no status; its stderr says why",
       );
   });
+});
+
+const taken = new PortTakenError({ report: "port 49177 is held" });
+
+describe("retryPortTaken", () => {
+  it.effect("reads bosun's PortTakenError as its own failure", () =>
+    Effect.sync(() => {
+      const refused = bosunOutput(
+        ["start", "e2e"],
+        JSON.stringify({
+          bosun: 1,
+          error: { _tag: "PortTakenError", message: "port 49177 is held" },
+        }),
+      );
+      assert.deepStrictEqual(refused, Result.fail(taken));
+    }),
+  );
+
+  it.effect("starts again after a start whose port was taken", () =>
+    Effect.gen(function* () {
+      let starts = 0;
+      const start = Effect.suspend(() =>
+        ++starts === 1 ? Effect.fail(taken) : Effect.succeed("running"),
+      );
+      assert.strictEqual(yield* retryPortTaken(start), "running");
+      assert.strictEqual(starts, 2);
+    }),
+  );
+
+  it.effect("gives up after three starts whose port was taken", () =>
+    Effect.gen(function* () {
+      let starts = 0;
+      const start = Effect.suspend(() => {
+        starts++;
+        return Effect.fail(taken);
+      });
+      assert.deepStrictEqual(yield* Effect.flip(retryPortTaken(start)), taken);
+      assert.strictEqual(starts, 3);
+    }),
+  );
+
+  it.effect("fails at once on any other failure", () =>
+    Effect.gen(function* () {
+      let starts = 0;
+      const exited = new ServerError({ message: "it exited" });
+      const start = Effect.suspend(() => {
+        starts++;
+        return Effect.fail<ServerError | PortTakenError>(exited);
+      });
+      assert.deepStrictEqual(yield* Effect.flip(retryPortTaken(start)), exited);
+      assert.strictEqual(starts, 1);
+    }),
+  );
 });
