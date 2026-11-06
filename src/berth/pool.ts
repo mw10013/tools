@@ -30,9 +30,24 @@ export type PoolPrefix = typeof PoolPrefix.Type;
 
 const POOL_NAMES = 100;
 
+// Not `Schema.isUnique`: its message does not name the store listed twice.
+const listedOnce = Schema.makeFilter<ReadonlyArray<StoreDomain>>(
+  (stores) => {
+    const twice = stores.filter(
+      (store, index) => stores.indexOf(store) !== index,
+    );
+    return (
+      twice.length === 0 ||
+      `lists ${[...new Set(twice)].map(handleOf).join(", ")} more than once`
+    );
+  },
+  { expected: "each store listed once" },
+);
+
 /**
  * `stores.json`, which only `berth pool ensure` writes. Every listed store was
- * checked to exist as a dev store on basic. The file holds handles.
+ * checked to exist as a dev store on basic, and none twice. The file holds
+ * handles.
  */
 export const Pool = Schema.Struct({
   organization: OrganizationId,
@@ -47,7 +62,7 @@ export const Pool = Schema.Struct({
         }),
       ),
     ),
-  ),
+  ).check(listedOnce),
 });
 export type Pool = typeof Pool.Type;
 

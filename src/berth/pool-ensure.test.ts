@@ -63,6 +63,17 @@ const listed = (file: string): unknown =>
   (JSON.parse(fs.readFileSync(file, "utf8")) as { stores: unknown }).stores;
 
 describe("ensure", () => {
+  it("refuses a stores.json that lists a store twice and creates nothing", async () => {
+    const file = storesFile(["shop-00", "shop-00"]);
+    const orgStores = [devStore("shop-00")];
+    const result = await run(file, 3, fakeCli(orgStores));
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "SettingsInvalidError" },
+    });
+    expect(orgStores).toHaveLength(1);
+  });
+
   it("writes each store it creates into stores.json", async () => {
     const file = storesFile(["shop-00"]);
     const result = await run(file, 3, fakeCli([devStore("shop-00")]));

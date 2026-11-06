@@ -1,4 +1,6 @@
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import { handleOf } from "./domain.ts";
@@ -6,6 +8,7 @@ import {
   domainOf,
   type OrgStore,
   planPool,
+  Pool,
   PoolNamesExhaustedError,
   PoolPrefix,
   PoolStoresUnfitError,
@@ -153,5 +156,17 @@ describe("planPool", () => {
     expect(fails({ ...input, count: 101 })).toBeInstanceOf(
       PoolNamesExhaustedError,
     );
+  });
+});
+
+describe("Pool", () => {
+  it("rejects a store listed twice, naming it", () => {
+    const exit = Schema.decodeUnknownExit(Pool)({
+      organization: "1",
+      prefix: "shop-",
+      stores: ["shop-00", "shop-01", "shop-00"],
+    });
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(String(exit)).toContain("lists shop-00 more than once");
   });
 });
