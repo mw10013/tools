@@ -4,6 +4,7 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
 import { STAGE_RUN, StageRun } from "#devkit/cloudflare/stage.ts";
@@ -17,27 +18,101 @@ import {
   refuseUnsafeNuke,
   requireStageEnv,
   StageEnvMissingError,
+  type StageFieldEnv,
   UnsafeNukeRefusedError,
 } from "./deployed-stack.ts";
 
 const Fields = Schema.Struct({
   API_KEY: Schema.NonEmptyString,
   API_SECRET: Schema.Redacted(Schema.NonEmptyString),
+  CONTROL_TOKEN: Schema.optional(
+    Schema.Redacted(Schema.String.check(Schema.isPattern(/^ct_/u))),
+  ),
+  REGION: Schema.optionalKey(Schema.Literals(["eu", "us"])),
 });
+
+const shown = (fields: readonly StageFieldEnv[]) =>
+  fields.map((field) =>
+    field._tag === "Set"
+      ? { ...field, value: Redacted.value(field.value) }
+      : field,
+  );
 
 describe("checkStageEnv", () => {
   it.effect(
-    "names the fields the environment lacks or holds invalid, and the secrets",
+    "finds a required field the environment lacks or holds invalid, and reads a secret's raw string",
     () =>
       Effect.gen(function* () {
         assert.deepStrictEqual(
-          yield* checkStageEnv(Fields, { API_KEY: "", API_SECRET: "s" }),
-          { invalid: ["API_KEY"], secrets: ["API_SECRET"] },
+          shown(yield* checkStageEnv(Fields, { API_KEY: "", API_SECRET: "s" })),
+          [
+            { _tag: "Invalid", name: "API_KEY" },
+            { _tag: "Set", name: "API_SECRET", value: "s", secret: true },
+            { _tag: "Absent", name: "CONTROL_TOKEN" },
+            { _tag: "Absent", name: "REGION" },
+          ],
         );
-        assert.deepStrictEqual(yield* checkStageEnv(Fields, {}), {
-          invalid: ["API_KEY", "API_SECRET"],
-          secrets: [],
-        });
+        assert.deepStrictEqual(shown(yield* checkStageEnv(Fields, {})), [
+          { _tag: "Invalid", name: "API_KEY" },
+          { _tag: "Invalid", name: "API_SECRET" },
+          { _tag: "Absent", name: "CONTROL_TOKEN" },
+          { _tag: "Absent", name: "REGION" },
+        ]);
+      }),
+  );
+
+  it.effect(
+    "sets an optional field the environment holds, and finds one invalid",
+    () =>
+      Effect.gen(function* () {
+        const required = { API_KEY: "key", API_SECRET: "s" };
+        assert.deepStrictEqual(
+          shown(
+            yield* checkStageEnv(Fields, {
+              ...required,
+              CONTROL_TOKEN: "ct_1",
+              REGION: "eu",
+            }),
+          ).slice(2),
+          [
+            { _tag: "Set", name: "CONTROL_TOKEN", value: "ct_1", secret: true },
+            { _tag: "Set", name: "REGION", value: "eu", secret: false },
+          ],
+        );
+        assert.deepStrictEqual(
+          shown(
+            yield* checkStageEnv(Fields, {
+              ...required,
+              CONTROL_TOKEN: "bad",
+              REGION: "mars",
+            }),
+          ).slice(2),
+          [
+            { _tag: "Invalid", name: "CONTROL_TOKEN" },
+            { _tag: "Invalid", name: "REGION" },
+          ],
+        );
+      }),
+  );
+
+  it.effect(
+    "takes an empty optional value as absent, as Config reads it in a Worker",
+    () =>
+      Effect.gen(function* () {
+        assert.deepStrictEqual(
+          shown(
+            yield* checkStageEnv(Fields, {
+              API_KEY: "key",
+              API_SECRET: "s",
+              CONTROL_TOKEN: "",
+              REGION: "",
+            }),
+          ).slice(2),
+          [
+            { _tag: "Absent", name: "CONTROL_TOKEN" },
+            { _tag: "Absent", name: "REGION" },
+          ],
+        );
       }),
   );
 });
@@ -67,6 +142,14 @@ describe("deployedRunRefusal", () => {
     expect(
       deployedRunRefusal("production", "deploy", builds("production")),
     ).toStrictEqual(Option.none());
+  });
+
+  it("takes a ProcessEnv that declares a named variable, as @types/node 25 does", () => {
+    const env: { TZ?: string; [name: string]: string | undefined } =
+      builds("main");
+    expect(deployedRunRefusal("staging", "deploy", env)).toStrictEqual(
+      Option.none(),
+    );
   });
 
   it("refuses a build of another branch", () => {
@@ -152,7 +235,12 @@ const withRun = <A, E, R>(
   Effect.acquireUseRelease(
     Effect.sync(() => {
       const saved = { env: { ...process.env }, argv: process.argv };
-      for (const name of ["WORKERS_CI", "WORKERS_CI_BRANCH", STAGE_RUN])
+      for (const name of [
+        "WORKERS_CI",
+        "WORKERS_CI_BRANCH",
+        STAGE_RUN,
+        ...Object.keys(Fields.fields),
+      ])
         Reflect.deleteProperty(process.env, name);
       Object.assign(process.env, env);
       process.argv = ["node", "cli.js", ...argv];
@@ -256,6 +344,24 @@ describe("requireStageEnv", () => {
           ),
         );
         assert.isTrue(Exit.isSuccess(yield* guard("dev-mw", {})));
+      }),
+  );
+
+  it.effect(
+    "passes a deployed stage without an optional field, and fails one holding it invalid",
+    () =>
+      Effect.gen(function* () {
+        const required = { API_KEY: "key", API_SECRET: "s" };
+        assert.isTrue(
+          Exit.isSuccess(
+            yield* guard("staging", { ...required, CONTROL_TOKEN: "ct_1" }),
+          ),
+        );
+        const invalid = defect(
+          yield* guard("production", { ...required, CONTROL_TOKEN: "bad" }),
+        );
+        assert.instanceOf(invalid, StageEnvMissingError);
+        assert.deepStrictEqual(invalid.names, ["CONTROL_TOKEN"]);
       }),
   );
 });

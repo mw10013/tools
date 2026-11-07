@@ -28,6 +28,7 @@ import * as Match from "effect/Match";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import * as SchemaAST from "effect/SchemaAST";
 
 import {
   branchOf,
@@ -99,8 +100,13 @@ export const stageProviders = Layer.unwrap(
 export const deployedSecrets: Alchemy.StackSecrets = ({ stage }) =>
   isDeployed(stage) ? [] : [Alchemy.Secrets.DotEnv()];
 
-/** The variables a run on a {@link Deployed} stage is judged by. */
+/**
+ * The variables a run on a {@link Deployed} stage is judged by, in an environment such as
+ * `process.env`. The index signature takes any `@types/node`'s `ProcessEnv`: one that declares a
+ * named variable (25.x declares `TZ`) shares no property with these, which TypeScript refuses.
+ */
 export interface DeployedRunEnv {
+  readonly [name: string]: string | undefined;
   readonly WORKERS_CI?: string | undefined;
   readonly WORKERS_CI_BRANCH?: string | undefined;
   readonly [STAGE_RUN]?: string | undefined;
@@ -232,26 +238,36 @@ export const guardDeployedRun: Effect.Effect<void, never, Alchemy.Stage> =
 
 /**
  * An app's deployed-stage fields, the default export of `stacks/stage-env.ts`: one field per
- * variable, named after it, a secret as `Schema.Redacted(...)`. Each decodes from the variable's
- * string with no services.
+ * variable, named after it, a secret as `Schema.Redacted(...)`, one only some stages set as
+ * `Schema.optional(...)` or `Schema.optionalKey(...)`. Each decodes from the variable's string with
+ * no services.
  */
 export type StageFields = Schema.Struct<Schema.Struct.Fields> &
   Schema.Codec<unknown>;
 
-/** Which of `fields` `env` lacks or holds an invalid value for, and which are secrets. */
-export interface StageEnvCheck {
-  readonly invalid: readonly string[];
-  readonly secrets: readonly string[];
-}
+/**
+ * One field as `Config` reads it from an environment. `Absent` is an optional field with no
+ * value, which `Config` takes an empty string to be; a required field with none is `Invalid`.
+ * `Set` holds the raw string, a secret when the field decodes to a `Redacted`.
+ */
+export type StageFieldEnv =
+  | { readonly _tag: "Absent"; readonly name: string }
+  | { readonly _tag: "Invalid"; readonly name: string }
+  | {
+      readonly _tag: "Set";
+      readonly name: string;
+      readonly value: Redacted.Redacted;
+      readonly secret: boolean;
+    };
 
 /**
- * Parses each of `fields` from `env` as `Config` reads it in a Worker. Names only: a parse
- * failure's own message can quote the value, a secret included.
+ * Parses each of `fields` from `env` as `Config` reads it in a Worker. A parse failure's own
+ * message can quote the value, a secret included, so an invalid field carries only its name.
  */
 export const checkStageEnv = (
   fields: StageFields,
   env: Readonly<Record<string, string | undefined>>,
-): Effect.Effect<StageEnvCheck> => {
+): Effect.Effect<readonly StageFieldEnv[]> => {
   const provider = ConfigProvider.fromEnv({
     env: Object.fromEntries(
       Object.entries(env).filter(
@@ -259,23 +275,29 @@ export const checkStageEnv = (
       ),
     ),
   });
-  return Effect.forEach(Object.keys(fields.fields), (name) =>
-    Config.schema(fields.fields[name] as StageFields, name)
-      .parse(provider)
-      .pipe(
-        Effect.map((value) => ({ name, secret: Redacted.isRedacted(value) })),
-        Effect.option,
-        Effect.map((parsed) => ({ name, parsed })),
-      ),
-  ).pipe(
-    Effect.map((results) => ({
-      invalid: results
-        .filter(({ parsed }) => Option.isNone(parsed))
-        .map(({ name }) => name),
-      secrets: results
-        .filter(({ parsed }) => Option.exists(parsed, ({ secret }) => secret))
-        .map(({ name }) => name),
-    })),
+  return Effect.forEach(Object.entries(fields.fields), ([name, field]) =>
+    Effect.gen(function* () {
+      const raw = yield* Effect.option(
+        Config.schema(Schema.String, name).parse(provider),
+      );
+      if (Option.isNone(raw))
+        return {
+          _tag: SchemaAST.isOptional(field.ast) ? "Absent" : "Invalid",
+          name,
+        } as const;
+      const parsed = yield* Effect.option(
+        Config.schema(field as StageFields, name).parse(provider),
+      );
+      return Option.match(parsed, {
+        onNone: (): StageFieldEnv => ({ _tag: "Invalid", name }),
+        onSome: (value): StageFieldEnv => ({
+          _tag: "Set",
+          name,
+          value: Redacted.make(raw.value),
+          secret: Redacted.isRedacted(value),
+        }),
+      });
+    }),
   );
 };
 
@@ -290,8 +312,8 @@ export class StageEnvMissingError extends Schema.TaggedError<StageEnvMissingErro
 
 /**
  * The app stack's first step. On a {@link Deployed} stage it dies unless the environment holds
- * every one of `fields`, so a Builds deploy missing a trigger variable fails instead of binding
- * nothing where a Worker reads `Config.option`.
+ * every required one of `fields` and each optional one it holds is valid, so a Builds deploy
+ * missing a trigger variable fails instead of binding nothing where a Worker reads `Config.option`.
  *
  * @example
  * export default Alchemy.Stack("app", { providers: stageProviders, state: stageState, secrets: deployedSecrets },
@@ -307,7 +329,9 @@ export const requireStageEnv = (
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
     if (!isDeployed(stage)) return;
-    const { invalid } = yield* checkStageEnv(fields, process.env);
+    const invalid = (yield* checkStageEnv(fields, process.env))
+      .filter((field) => field._tag === "Invalid")
+      .map(({ name }) => name);
     if (invalid.length > 0)
       return yield* Effect.die(
         new StageEnvMissingError({ stage, names: invalid }),
