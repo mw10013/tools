@@ -6,7 +6,6 @@
  */
 import * as path from "node:path";
 
-import * as Argument from "effect/cli/Argument";
 import * as Command from "effect/cli/Command";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
@@ -14,6 +13,7 @@ import * as Option from "effect/Option";
 
 import * as Git from "#wt/git.ts";
 
+import * as DevkitBuild from "./build.ts";
 import * as Devkit from "./sync.ts";
 
 const TOOLS = path.resolve(import.meta.dirname, "../..");
@@ -55,37 +55,19 @@ const run = <
     }),
   );
 
-const sync = Command.make(
-  "sync",
-  {
-    layer: Argument.Literals("layer", Devkit.LAYERS).pipe(
-      Argument.optional,
-      Argument.withDescription(
-        "core, cloudflare (includes core) or shopify (includes both); default the last sync's",
-      ),
-    ),
-  },
-  ({ layer }) =>
-    run(
-      Effect.gen(function* () {
-        const synced = yield* Devkit.sync(TOOLS, yield* appRoot, layer);
-        const count =
-          synced.added.length + synced.changed.length + synced.removed.length;
-        yield* Console.error(
-          count === 0
-            ? `devkit: ${Devkit.VENDOR} already matches tools ${synced.tools.slice(0, 7)}`
-            : `devkit: synced ${synced.layer} at tools ${synced.tools.slice(0, 7)}: ${String(count)} file(s) changed`,
-        );
-        yield* warnAlchemy(synced.alchemyMismatch);
-        return {
-          ...synced,
-          alchemyMismatch: Option.getOrNull(synced.alchemyMismatch),
-        };
-      }),
-    ),
+// devkit's source no longer fits a vendored copy (app() replaced ROOT, bins no longer self-run),
+// so a sync would break the app; each app moves to the @mw10013/devkit package instead.
+const sync = Command.make("sync", {}, () =>
+  run(
+    Effect.fail({
+      _tag: "SyncRetiredError",
+      message:
+        "devkit is a package now: install @mw10013/devkit from a devkit-v* tag instead of syncing vendor/devkit/",
+    }),
+  ),
 ).pipe(
   Command.withShortDescription(
-    "Copy devkit from tools' HEAD into this repo's vendor/devkit/, refusing if a vendored file was edited",
+    "Retired: devkit is the @mw10013/devkit package; refuses to copy into vendor/devkit/",
   ),
 );
 
@@ -110,9 +92,23 @@ const status = Command.make("status", {}, () =>
   ),
 );
 
+const build = Command.make("build", {}, () =>
+  run(
+    Effect.gen(function* () {
+      const built = yield* DevkitBuild.build();
+      yield* Console.error(`devkit: built the package into ${built.directory}`);
+      return built;
+    }),
+  ),
+).pipe(
+  Command.withShortDescription(
+    "Build src/devkit into the package @mw10013/devkit under dist/devkit/",
+  ),
+);
+
 export const command = Command.make("devkit").pipe(
   Command.withDescription(
     "Vendor devkit, the dev tooling shared by the apps, into this repository.",
   ),
-  Command.withSubcommands([sync, status]),
+  Command.withSubcommands([sync, status, build]),
 );

@@ -18,7 +18,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Stream from "effect/Stream";
 
-import { ROOT } from "#devkit/core/app.ts";
+import { type App, app } from "#devkit/core/app.ts";
 
 import type { WebEnvironment } from "./web.ts";
 
@@ -116,7 +116,7 @@ export const acquire = Effect.fn("Berth.acquire")(function* (
   const handle = yield* spawner
     .spawn(
       ChildProcess.make("berth", ["acquire", environment], {
-        cwd: ROOT,
+        cwd: app().root,
         stdin: "ignore",
         stderr: "inherit",
       }),
@@ -129,10 +129,17 @@ export const acquire = Effect.fn("Berth.acquire")(function* (
   return yield* Effect.fromResult(leaseOf(environment, stdout));
 }, Effect.scoped);
 
-/** {@link acquire} for configs that cannot run an effect (Playwright's); throws its failure's message. */
-export const acquireSync = (environment: WebEnvironment): Lease => {
+/**
+ * {@link acquire} for configs that cannot run an effect (Playwright's); throws its failure's
+ * message. A config passes `app(import.meta.dirname)`, so the lease is the config's app's even
+ * when another directory loads the config.
+ */
+export const acquireSync = (
+  environment: WebEnvironment,
+  { root }: App = app(),
+): Lease => {
   const run = spawnSync("berth", ["acquire", environment], {
-    cwd: ROOT,
+    cwd: root,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
   });

@@ -10,7 +10,7 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { APP_NAME } from "#devkit/core/app.ts";
+import { app } from "#devkit/core/app.ts";
 
 import {
   canonicalTrigger,
@@ -49,7 +49,7 @@ const listed = (overrides: Partial<Trigger> = {}): Trigger => ({
 describe("canonicalTrigger", () => {
   it("names the trigger after the Website and deploys through the stage's script", () => {
     expect(canonicalTrigger("staging", TOKEN)).toStrictEqual({
-      trigger_name: `${APP_NAME}-website-staging`,
+      trigger_name: `${app().name}-website-staging`,
       build_token_uuid: TOKEN,
       build_command: "",
       deploy_command: "pnpm exec vp run deploy:staging",
@@ -362,7 +362,7 @@ describe("ensureWebsite", () => {
   const read = (file: string) =>
     fs.existsSync(fake(file)) ? fs.readFileSync(fake(file), "utf8") : "";
   const website = (stage: "staging" | "production", id: string) =>
-    JSON.stringify([{ id, script_name: `${APP_NAME}-website-${stage}` }]);
+    JSON.stringify([{ id, script_name: `${app().name}-website-${stage}` }]);
   const checkout = (state: {
     status?: string;
     head?: string;

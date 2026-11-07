@@ -432,3 +432,29 @@ reads the plan, the trigger, its variables' names and the latest build.
 helpers it relies on, `requireStageEnv` among them, are in
 `cloudflare/deployed-stack.ts`. The coder skill's `deployed-stages.md` is the
 lifecycle.
+
+### The package
+
+`src/devkit/package.json` makes devkit the package `@mw10013/devkit` and is the
+one list of its public surface: `exports` (the modules an app imports, layer
+first: `@mw10013/devkit/core/app`), `bin` (`devkit-stage`, `devkit-logs`,
+`devkit-bosun-port`) and the peer dependencies, optional for what only a layer
+needs. A module it does not list, such as `core/orphans`, is internal.
+
+```sh
+vp run build:devkit   # dist/devkit/: package.json plus dist/*.mjs and *.d.mts
+```
+
+The build's entries come from that file and the built manifest maps each export
+to `{ types, default }` in `dist/`, so the list exists once.
+`src/devkit-cli/build.test.ts` runs the build and checks it: every export has
+script and types, no `.ts` specifier remains, `cloudflare/stage` reaches only
+`effect`, no `core` export reaches Alchemy or Playwright, and an unlisted module
+cannot be imported. tools lints with the same plugin its consumers load, by
+specifier, through its `@mw10013/devkit` link to `src/devkit`.
+
+The app is `app(directory)` from `core/app.ts` (nearest `package.json`, never
+above the git toplevel), which replaced `ROOT` and `APP_NAME`: a config passes
+`import.meta.dirname`, a CLI takes the working directory, and `integ-setup` takes
+the Vitest project's root. A vendored copy still syncs, but a synced app must
+move to `app()` and stop running `vpx vendor/devkit/...` for the three commands.

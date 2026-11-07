@@ -1,14 +1,11 @@
-#!/usr/bin/env vpx
 /**
  * `vp run logs`: a {@link Deployed} stage's Worker logs from Workers
  * Observability, one line per event, for both of the app's Workers
- * ({@link workerNameOf}). An app runs this file directly:
- * `"logs": "vpx vendor/devkit/cloudflare/logs.ts"`.
+ * ({@link workerNameOf}). An app runs it as the
+ * `devkit-logs` bin: `"logs": "devkit-logs"`.
  *
  * @module
  */
-import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Argument from "effect/cli/Argument";
 import * as CliError from "effect/cli/CliError";
 import * as Command from "effect/cli/Command";
@@ -23,7 +20,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
 import { Deployed, workerNameOf } from "#devkit/cloudflare/stage.ts";
-import { APP_NAME } from "#devkit/core/app.ts";
+import { app } from "#devkit/core/app.ts";
 import { runCommand } from "#devkit/core/command.ts";
 
 class LogsError extends Schema.TaggedError<LogsError>()("LogsError", {
@@ -136,7 +133,7 @@ export const lineOf = (stage: Deployed, event: Event) => {
     );
   return [
     DateTime.formatIso(event.timestamp),
-    event.$metadata.service === workerNameOf(APP_NAME, stage, "backend")
+    event.$metadata.service === workerNameOf(app().name, stage, "backend")
       ? "backend"
       : "website",
     (level ?? "").toLowerCase(),
@@ -159,7 +156,7 @@ const query = Effect.fn("Logs.query")(function* (
     key: "$metadata.service",
     operation: "eq",
     type: "string",
-    value: workerNameOf(APP_NAME, stage, worker),
+    value: workerNameOf(app().name, stage, worker),
   });
   const body = {
     queryId: "adhoc",
@@ -358,15 +355,10 @@ const wait = Command.make(
   ),
 );
 
-// Only when run, so a test can import this module.
-if (import.meta.main) {
-  Command.make("logs").pipe(
-    Command.withDescription(
-      "Read staging's or production's Worker logs (website and backend).",
-    ),
-    Command.withSubcommands([show, follow, wait]),
-    Command.run({ version: "1.0.0" }),
-    Effect.provide(NodeServices.layer),
-    NodeRuntime.runMain,
-  );
-}
+/** `devkit-logs`: the bin's command, run by `bin/logs.ts` through {@link runCli}. */
+export const command = Command.make("logs").pipe(
+  Command.withDescription(
+    "Read staging's or production's Worker logs (website and backend).",
+  ),
+  Command.withSubcommands([show, follow, wait]),
+);

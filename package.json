@@ -16,6 +16,7 @@
   "scripts": {
     "berth": "vpx ./berth.ts",
     "bosun": "vpx ./bosun.ts",
+    "build:devkit": "vpx ./devkit.ts build",
     "devkit": "vpx ./devkit.ts",
     "prepare": "vp config",
     "refs": "vpx ./refs.ts",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.85",
     "@effect/vitest": "4.1.2",
+    "@mw10013/devkit": "link:src/devkit",
     "@types/node": "24.19.2",
     "@types/turndown": "5.0.6",
     "alchemy": "2.0.0-beta.85",

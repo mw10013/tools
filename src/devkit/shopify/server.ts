@@ -24,7 +24,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-import { ROOT } from "#devkit/core/app.ts";
+import { type App, app } from "#devkit/core/app.ts";
 
 import * as Berth from "./berth.ts";
 import type { WebEnvironment } from "./web.ts";
@@ -292,7 +292,7 @@ const bosun = Effect.fn("Server.bosun")(function* (args: readonly string[]) {
   const handle = yield* spawner
     .spawn(
       ChildProcess.make("bosun", [...args], {
-        cwd: ROOT,
+        cwd: app().root,
         stdin: "ignore",
         stderr: "inherit",
       }),
@@ -336,13 +336,18 @@ export const runningServer = Effect.fn("Server.runningServer")(function* (
   ).pipe(Effect.mapError(() => notRunning(environment)));
 });
 
-/** For configs that cannot run an effect (Playwright's). */
+/**
+ * For configs that cannot run an effect (Playwright's). A config passes
+ * `app(import.meta.dirname)`, so the status is the config's app's even when another directory
+ * loads the config.
+ */
 export const runningServerSync = (
   environment: WebEnvironment,
+  { root }: App = app(),
 ): RunningServer => {
   const args = ["status", environment];
   const run = spawnSync("bosun", args, {
-    cwd: ROOT,
+    cwd: root,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
   });
@@ -375,8 +380,9 @@ export const startServer = Effect.fn("Server.startServer")(function* (
 ) {
   if (server.config !== APP_CONFIG) {
     const fs = yield* FileSystem.FileSystem;
+    const { root } = app();
     yield* fs
-      .copyFile(path.join(ROOT, APP_CONFIG), path.join(ROOT, server.config))
+      .copyFile(path.join(root, APP_CONFIG), path.join(root, server.config))
       .pipe(Effect.mapError((error) => fail(error.message)));
   }
   const status = yield* retryPortTaken(
@@ -410,7 +416,7 @@ export const stopServer = Effect.fn("Server.stopServer")(function* (
   const code = yield* spawner
     .exitCode(
       ChildProcess.make("bosun", ["stop", environment], {
-        cwd: ROOT,
+        cwd: app().root,
         stdin: "ignore",
         stdout: "ignore",
         stderr: "inherit",
@@ -455,7 +461,7 @@ const decodeClientIdLine = Schema.decodeUnknownOption(ClientIdLine);
 export const loadClientId = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const toml = yield* fs
-    .readFileString(path.join(ROOT, "shopify.app.toml"))
+    .readFileString(path.join(app().root, "shopify.app.toml"))
     .pipe(Effect.mapError(() => fail("shopify.app.toml is missing")));
   return yield* Effect.fromOption(
     Array.findFirst(toml.split("\n"), (line) =>

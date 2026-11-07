@@ -1,8 +1,7 @@
-#!/usr/bin/env vpx
 /**
  * `vp run stage <command> <stage>`: sets up a {@link Deployed} stage's Workers Builds deploys,
- * reports its health, and resets staging. An app runs this file directly:
- * `"stage": "vpx vendor/devkit/cloudflare/deployed-stage.ts"`.
+ * reports its health, and resets staging. An app runs it as the
+ * `devkit-stage` bin: `"stage": "devkit-stage"`.
  *
  * Workers Builds deploys a stage with the app's `deploy:<stage>` script, plain
  * `alchemy deploy --stage <stage> --yes`, from the stage's branch. The stage's values are the
@@ -30,8 +29,6 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseEnv, stripVTControlCharacters } from "node:util";
 
-import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Argument from "effect/cli/Argument";
 import * as CliError from "effect/cli/CliError";
 import * as Command from "effect/cli/Command";
@@ -61,7 +58,7 @@ import {
   type StageRun,
   workerNameOf,
 } from "#devkit/cloudflare/stage.ts";
-import { APP_NAME, ROOT } from "#devkit/core/app.ts";
+import { app } from "#devkit/core/app.ts";
 import { runCommand } from "#devkit/core/command.ts";
 
 class StageError extends Schema.TaggedError<StageError>()("StageError", {
@@ -78,7 +75,8 @@ export const SHARED_BUILD_TOKEN = "Workers Builds - 2026-05-31 17:29";
 /** The app's stage fields ({@link StageFields}), its default export, relative to its root. */
 export const STAGE_ENV_MODULE = "stacks/stage-env.ts";
 
-const websiteOf = (stage: Deployed) => workerNameOf(APP_NAME, stage, "website");
+const websiteOf = (stage: Deployed) =>
+  workerNameOf(app().name, stage, "website");
 
 /** A trigger as `cf builds triggers list` gives it. */
 export const Trigger = Schema.Struct({
@@ -290,7 +288,7 @@ const cf = (args: readonly string[]) =>
 /** The app's stage fields, from {@link STAGE_ENV_MODULE}. */
 const loadStageFields = Effect.fn("DeployedStage.loadStageFields")(
   function* () {
-    const file = path.join(ROOT, STAGE_ENV_MODULE);
+    const file = path.join(app().root, STAGE_ENV_MODULE);
     const module: unknown = yield* Effect.tryPromise({
       try: () => import(pathToFileURL(file).href),
       catch: () => new StageError({ message: `cannot load ${file}` }),
@@ -314,10 +312,11 @@ const readStageFile = Effect.fn("DeployedStage.readStageFile")(function* (
   const fields = yield* loadStageFields();
   const name = `.env.${stage}`;
   const text = yield* (yield* FileSystem.FileSystem)
-    .readFileString(path.join(ROOT, name))
+    .readFileString(path.join(app().root, name))
     .pipe(
       Effect.mapError(
-        () => new StageError({ message: `cannot read ${name} at ${ROOT}` }),
+        () =>
+          new StageError({ message: `cannot read ${name} at ${app().root}` }),
       ),
     );
   const file = Object.fromEntries(
@@ -419,7 +418,7 @@ const previewsEnabled = (tag: string) =>
   );
 
 const git = (args: readonly string[]) =>
-  runCommand("git", ["-C", ROOT, ...args]).pipe(
+  runCommand("git", ["-C", app().root, ...args]).pipe(
     Effect.map((output) => output.trim()),
     Effect.mapError((error) => new StageError({ message: error.message })),
   );
@@ -819,7 +818,7 @@ const alchemy = Effect.fn("DeployedStage.alchemy")(function* (
   const exitCode = yield* spawner
     .exitCode(
       ChildProcess.make("alchemy", [...args], {
-        cwd: ROOT,
+        cwd: app().root,
         stdin: "ignore",
         stdout: "inherit",
         stderr: "inherit",
@@ -861,7 +860,7 @@ const plan = Effect.fn("DeployedStage.plan")(function* (
   const handle = yield* spawner
     .spawn(
       ChildProcess.make("alchemy", ["plan", "--stage", stage], {
-        cwd: ROOT,
+        cwd: app().root,
         stdin: "ignore",
         env: { ...alchemyEnv(variables, "check"), NO_COLOR: "1" },
         extendEnv: true,
@@ -1026,15 +1025,10 @@ const resetCommand = Command.make(
   ),
 );
 
-// Only when run, so a test can import this module.
-if (import.meta.main) {
-  Command.make("stage").pipe(
-    Command.withDescription(
-      "Set up, check and reset staging and production's Workers Builds deploys.",
-    ),
-    Command.withSubcommands([upCommand, checkCommand, resetCommand]),
-    Command.run({ version: "1.0.0" }),
-    Effect.provide(NodeServices.layer),
-    NodeRuntime.runMain,
-  );
-}
+/** `devkit-stage`: the bin's command, run by `bin/stage.ts` through {@link runCli}. */
+export const command = Command.make("stage").pipe(
+  Command.withDescription(
+    "Set up, check and reset staging and production's Workers Builds deploys.",
+  ),
+  Command.withSubcommands([upCommand, checkCommand, resetCommand]),
+);

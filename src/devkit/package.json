@@ -1,0 +1,66 @@
+{
+  "name": "@mw10013/devkit",
+  "version": "0.0.0-source",
+  "private": true,
+  "license": "MIT",
+  "bin": {
+    "devkit-bosun-port": "./bin/bosun-port.ts",
+    "devkit-logs": "./bin/logs.ts",
+    "devkit-stage": "./bin/stage.ts"
+  },
+  "type": "module",
+  "imports": {
+    "#devkit/*": "./*"
+  },
+  "exports": {
+    "./core/app": "./core/app.ts",
+    "./core/command": "./core/command.ts",
+    "./core/test-runs": "./core/test-runs.ts",
+    "./core/bosun-endpoint": "./core/bosun-endpoint.ts",
+    "./core/lint/rules": "./core/lint/rules.ts",
+    "./core/lint/conventions": "./core/lint/conventions.ts",
+    "./cloudflare/stage": "./cloudflare/stage.ts",
+    "./cloudflare/deployed-stack": "./cloudflare/deployed-stack.ts",
+    "./cloudflare/integ-setup": "./cloudflare/integ-setup.ts",
+    "./shopify/agent-chrome": "./shopify/agent-chrome.ts",
+    "./shopify/app-handle": "./shopify/app-handle.ts",
+    "./shopify/berth": "./shopify/berth.ts",
+    "./shopify/embedded-app": "./shopify/embedded-app.ts",
+    "./shopify/local-route": "./shopify/local-route.ts",
+    "./shopify/server": "./shopify/server.ts",
+    "./shopify/stage-store": "./shopify/stage-store.ts",
+    "./shopify/web": "./shopify/web.ts",
+    "./shopify/worktree": "./shopify/worktree.ts"
+  },
+  "peerDependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.85",
+    "@effect/platform-node": "^4.0.5",
+    "alchemy": "2.0.0-beta.85",
+    "effect": "^4.0.5",
+    "playwright": "^1.64.1",
+    "vite": "*",
+    "vite-plus": "^1.4.0",
+    "vitest": "^5.0.5"
+  },
+  "peerDependenciesMeta": {
+    "@alchemy.run/cloudflare": {
+      "optional": true
+    },
+    "@effect/platform-node": {
+      "optional": true
+    },
+    "alchemy": {
+      "optional": true
+    },
+    "playwright": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    }
+  },
+  "//": "devkit's one manifest. `exports` and `bin` are the public surface, and the build makes one entry for each. A module not listed is internal: it builds as a chunk without a .d.mts, and importing it from outside fails. The built manifest maps each export to {types, default} in dist/ (src/devkit-cli/build.ts). The version lives in release tags."
+}
