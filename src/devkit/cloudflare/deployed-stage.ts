@@ -50,6 +50,7 @@ import * as Stream from "effect/Stream";
 
 import {
   checkStageEnv,
+  type StageFieldEnv,
   type StageFields,
 } from "#devkit/cloudflare/deployed-stack.ts";
 import {
@@ -191,18 +192,14 @@ const describeStep =
     }
   };
 
-/** One trigger variable: a line of `.env.<stage>`, its value the file's raw string. */
-export interface StageVariable {
-  readonly name: string;
-  readonly value: Redacted.Redacted;
-  readonly secret: boolean;
-}
+/** One trigger variable: a line of `.env.<stage>` setting a field, its value the file's raw string. */
+export type StageVariable = Extract<StageFieldEnv, { readonly _tag: "Set" }>;
 
 /**
- * The trigger variables `file` (a parsed `.env.<stage>`) makes: one per field, a secret when the
- * field decodes to a `Redacted`. It fails naming every field the file lacks or holds an invalid
- * value for and every key no field declares, since the trigger's variables must equal the file.
- * Names only, never values.
+ * The trigger variables `file` (a parsed `.env.<stage>`) makes: one per field it sets, a secret
+ * when the field decodes to a `Redacted`; an optional field it leaves out makes none. It fails
+ * naming every field the file lacks or holds an invalid value for and every key no field
+ * declares, since the trigger's variables must equal the file. Names only, never values.
  */
 export const stageVariables = Effect.fn("DeployedStage.stageVariables")(
   function* (
@@ -210,7 +207,10 @@ export const stageVariables = Effect.fn("DeployedStage.stageVariables")(
     file: Readonly<Record<string, string>>,
     source: string,
   ) {
-    const { invalid, secrets } = yield* checkStageEnv(fields, file);
+    const env = yield* checkStageEnv(fields, file);
+    const invalid = env
+      .filter((field) => field._tag === "Invalid")
+      .map(({ name }) => name);
     const undeclared = Object.keys(file).filter(
       (name) => !Object.hasOwn(fields.fields, name),
     );
@@ -228,11 +228,7 @@ export const stageVariables = Effect.fn("DeployedStage.stageVariables")(
       return yield* new StageError({
         message: `${source} ${problems.join(" and ")}`,
       });
-    return Object.keys(fields.fields).map((name): StageVariable => ({
-      name,
-      value: Redacted.make(file[name] ?? ""),
-      secret: secrets.includes(name),
-    }));
+    return env.filter((field): field is StageVariable => field._tag === "Set");
   },
 );
 
@@ -243,8 +239,11 @@ const TriggerVariables = Schema.Record(
 );
 type TriggerVariables = typeof TriggerVariables.Type;
 
-/** The trigger's variables that no field declares, which `up` deletes. */
-export const undeclaredVariables = (
+/**
+ * The trigger's variables the file does not set, which `up` deletes: one no field declares, or an
+ * optional field the file leaves out.
+ */
+export const staleVariables = (
   variables: readonly StageVariable[],
   existing: TriggerVariables,
 ): readonly string[] =>
@@ -266,8 +265,8 @@ export const variableProblems = (
       ];
     return [];
   }),
-  ...undeclaredVariables(variables, existing).map(
-    (name) => `the trigger holds ${name}, which no field declares`,
+  ...staleVariables(variables, existing).map(
+    (name) => `the trigger holds ${name}, which the file does not set`,
   ),
 ];
 
@@ -603,9 +602,9 @@ const ensureTrigger = Effect.fn("DeployedStage.ensureTrigger")(function* (
 });
 
 /**
- * Sets every variable in one request and deletes the trigger's undeclared ones, upsert first so the
- * trigger never lacks a value. The body, secrets included, goes to `cf` as a file in a temporary
- * directory only this user can read, removed after, never on argv.
+ * Sets every variable in one request and deletes the trigger's {@link staleVariables}, upsert
+ * first so the trigger never lacks a value. The body, secrets included, goes to `cf` as a file in a
+ * temporary directory only this user can read, removed after, never on argv.
  */
 const syncVariables = Effect.fn("DeployedStage.syncVariables")(function* (
   triggerUuid: string,
@@ -644,7 +643,7 @@ const syncVariables = Effect.fn("DeployedStage.syncVariables")(function* (
   yield* Console.error(
     `stage: set ${variables.map(({ name }) => name).join(", ")}`,
   );
-  for (const name of undeclaredVariables(
+  for (const name of staleVariables(
     variables,
     yield* triggerVariables(triggerUuid),
   )) {
@@ -775,14 +774,14 @@ export const up = Effect.fn("DeployedStage.up")(function* (
     const { kept, steps } = yield* readTriggers(stage, tag);
     const existing =
       kept === undefined ? {} : yield* triggerVariables(kept.trigger_uuid);
-    const undeclared = undeclaredVariables(variables, existing);
+    const stale = staleVariables(variables, existing);
     const writes = [
       ...(Option.isNone(tag)
         ? [`first deploy of ${branchOf(stage)} from this checkout`]
         : []),
       ...steps.map(describeStep(stage)),
       `set ${names}`,
-      ...(undeclared.length > 0 ? [`delete ${undeclared.join(", ")}`] : []),
+      ...(stale.length > 0 ? [`delete ${stale.join(", ")}`] : []),
       `start a build of ${branchOf(stage)} and wait for it`,
     ];
     yield* Console.log(

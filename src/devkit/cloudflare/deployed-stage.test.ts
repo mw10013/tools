@@ -17,10 +17,10 @@ import {
   ensureWebsite,
   replacesWebsite,
   stageVariables,
+  staleVariables,
   type Trigger,
   triggerDrift,
   triggerPlan,
-  undeclaredVariables,
   variableProblems,
 } from "./deployed-stage.ts";
 
@@ -182,9 +182,13 @@ describe("triggerPlan", () => {
 const Fields = Schema.Struct({
   API_KEY: Schema.NonEmptyString,
   API_SECRET: Schema.Redacted(Schema.String.check(Schema.isPattern(/^sk_/u))),
+  CONTROL_TOKEN: Schema.optional(
+    Schema.Redacted(Schema.String.check(Schema.isPattern(/^ct_/u))),
+  ),
 });
 
 const SECRET = "sk_s3cr3t-value";
+const CONTROL_TOKEN = "ct_s3cr3t-token";
 
 const variablesOf = (file: Record<string, string>) =>
   Effect.runSyncExit(stageVariables(Fields, file, ".env.staging"));
@@ -192,21 +196,59 @@ const variablesOf = (file: Record<string, string>) =>
 const failureOf = (exit: Exit.Exit<unknown, unknown>) =>
   Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : "";
 
-describe("stageVariables", () => {
-  it("makes one variable per field, a Redacted field a secret, the value the file's raw string", () => {
-    const exit = variablesOf({ API_KEY: "key", API_SECRET: SECRET });
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (Exit.isFailure(exit)) return;
-    expect(
-      exit.value.map(({ name, value, secret }) => ({
+const shownVariablesOf = (file: Record<string, string>) => {
+  const exit = variablesOf(file);
+  return Exit.isSuccess(exit)
+    ? exit.value.map(({ name, value, secret }) => ({
         name,
         value: Redacted.value(value),
         secret,
-      })),
+      }))
+    : failureOf(exit);
+};
+
+describe("stageVariables", () => {
+  it("makes one variable per field the file sets, a Redacted field a secret, the value the file's raw string", () => {
+    expect(
+      shownVariablesOf({
+        API_KEY: "key",
+        API_SECRET: SECRET,
+        CONTROL_TOKEN,
+      }),
     ).toStrictEqual([
       { name: "API_KEY", value: "key", secret: false },
       { name: "API_SECRET", value: SECRET, secret: true },
+      { name: "CONTROL_TOKEN", value: CONTROL_TOKEN, secret: true },
     ]);
+  });
+
+  it("makes no variable for an optional field the file leaves out or leaves empty", () => {
+    const required = [
+      { name: "API_KEY", value: "key", secret: false },
+      { name: "API_SECRET", value: SECRET, secret: true },
+    ];
+    expect(
+      shownVariablesOf({ API_KEY: "key", API_SECRET: SECRET }),
+    ).toStrictEqual(required);
+    expect(
+      shownVariablesOf({
+        API_KEY: "key",
+        API_SECRET: SECRET,
+        CONTROL_TOKEN: "",
+      }),
+    ).toStrictEqual(required);
+  });
+
+  it("names an optional field the file holds invalid, never its value", () => {
+    const message = failureOf(
+      variablesOf({
+        API_KEY: "key",
+        API_SECRET: SECRET,
+        CONTROL_TOKEN: "bad-token",
+      }),
+    );
+    expect(message).toContain("lacks or has invalid CONTROL_TOKEN");
+    expect(message).not.toContain("bad-token");
   });
 
   it("names a missing, invalid or undeclared field, never a value", () => {
@@ -229,12 +271,15 @@ describe("stageVariables", () => {
 });
 
 describe("trigger variables", () => {
-  const exit = variablesOf({ API_KEY: "key", API_SECRET: SECRET });
-  const variables = Exit.isSuccess(exit) ? exit.value : [];
+  const variablesFor = (file: Record<string, string>) => {
+    const exit = variablesOf(file);
+    return Exit.isSuccess(exit) ? exit.value : [];
+  };
+  const variables = variablesFor({ API_KEY: "key", API_SECRET: SECRET });
 
-  it("finds the trigger's variables no field declares", () => {
+  it("finds the trigger's variables the file does not set", () => {
     expect(
-      undeclaredVariables(variables, {
+      staleVariables(variables, {
         API_KEY: { is_secret: false },
         OLD: { is_secret: true },
       }),
@@ -250,7 +295,7 @@ describe("trigger variables", () => {
     ).toStrictEqual([
       "the trigger holds API_KEY as a secret",
       "the trigger lacks API_SECRET",
-      "the trigger holds OLD, which no field declares",
+      "the trigger holds OLD, which the file does not set",
     ]);
     expect(
       variableProblems(variables, {
@@ -258,6 +303,29 @@ describe("trigger variables", () => {
         API_SECRET: { is_secret: true },
       }),
     ).toStrictEqual([]);
+  });
+
+  it("deletes an optional field the file leaves out from the trigger, and sets it where the file holds it", () => {
+    const trigger = {
+      API_KEY: { is_secret: false },
+      API_SECRET: { is_secret: true },
+      CONTROL_TOKEN: { is_secret: true },
+    };
+    expect(variables.map(({ name }) => name)).toStrictEqual([
+      "API_KEY",
+      "API_SECRET",
+    ]);
+    expect(staleVariables(variables, trigger)).toStrictEqual(["CONTROL_TOKEN"]);
+    expect(variableProblems(variables, trigger)).toStrictEqual([
+      "the trigger holds CONTROL_TOKEN, which the file does not set",
+    ]);
+    const staging = variablesFor({
+      API_KEY: "key",
+      API_SECRET: SECRET,
+      CONTROL_TOKEN,
+    });
+    expect(staleVariables(staging, trigger)).toStrictEqual([]);
+    expect(variableProblems(staging, trigger)).toStrictEqual([]);
   });
 });
 
