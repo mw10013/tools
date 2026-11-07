@@ -1,0 +1,115 @@
+{
+  "name": "@mw10013/devkit",
+  "version": "0.1.0",
+  "license": "MIT",
+  "bin": {
+    "devkit-bosun-port": "./dist/bin/bosun-port.mjs",
+    "devkit-logs": "./dist/bin/logs.mjs",
+    "devkit-stage": "./dist/bin/stage.mjs"
+  },
+  "type": "module",
+  "exports": {
+    "./core/app": {
+      "types": "./dist/core/app.d.mts",
+      "default": "./dist/core/app.mjs"
+    },
+    "./core/command": {
+      "types": "./dist/core/command.d.mts",
+      "default": "./dist/core/command.mjs"
+    },
+    "./core/test-runs": {
+      "types": "./dist/core/test-runs.d.mts",
+      "default": "./dist/core/test-runs.mjs"
+    },
+    "./core/bosun-endpoint": {
+      "types": "./dist/core/bosun-endpoint.d.mts",
+      "default": "./dist/core/bosun-endpoint.mjs"
+    },
+    "./core/lint/rules": {
+      "types": "./dist/core/lint/rules.d.mts",
+      "default": "./dist/core/lint/rules.mjs"
+    },
+    "./core/lint/conventions": {
+      "types": "./dist/core/lint/conventions.d.mts",
+      "default": "./dist/core/lint/conventions.mjs"
+    },
+    "./cloudflare/stage": {
+      "types": "./dist/cloudflare/stage.d.mts",
+      "default": "./dist/cloudflare/stage.mjs"
+    },
+    "./cloudflare/deployed-stack": {
+      "types": "./dist/cloudflare/deployed-stack.d.mts",
+      "default": "./dist/cloudflare/deployed-stack.mjs"
+    },
+    "./cloudflare/integ-setup": {
+      "types": "./dist/cloudflare/integ-setup.d.mts",
+      "default": "./dist/cloudflare/integ-setup.mjs"
+    },
+    "./shopify/agent-chrome": {
+      "types": "./dist/shopify/agent-chrome.d.mts",
+      "default": "./dist/shopify/agent-chrome.mjs"
+    },
+    "./shopify/app-handle": {
+      "types": "./dist/shopify/app-handle.d.mts",
+      "default": "./dist/shopify/app-handle.mjs"
+    },
+    "./shopify/berth": {
+      "types": "./dist/shopify/berth.d.mts",
+      "default": "./dist/shopify/berth.mjs"
+    },
+    "./shopify/embedded-app": {
+      "types": "./dist/shopify/embedded-app.d.mts",
+      "default": "./dist/shopify/embedded-app.mjs"
+    },
+    "./shopify/local-route": {
+      "types": "./dist/shopify/local-route.d.mts",
+      "default": "./dist/shopify/local-route.mjs"
+    },
+    "./shopify/server": {
+      "types": "./dist/shopify/server.d.mts",
+      "default": "./dist/shopify/server.mjs"
+    },
+    "./shopify/stage-store": {
+      "types": "./dist/shopify/stage-store.d.mts",
+      "default": "./dist/shopify/stage-store.mjs"
+    },
+    "./shopify/web": {
+      "types": "./dist/shopify/web.d.mts",
+      "default": "./dist/shopify/web.mjs"
+    },
+    "./shopify/worktree": {
+      "types": "./dist/shopify/worktree.d.mts",
+      "default": "./dist/shopify/worktree.mjs"
+    }
+  },
+  "peerDependencies": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.85",
+    "@effect/platform-node": "^4.0.5",
+    "alchemy": "2.0.0-beta.85",
+    "effect": "^4.0.5",
+    "playwright": "^1.64.1",
+    "vite": "*",
+    "vite-plus": "^1.4.0",
+    "vitest": "^5.0.5"
+  },
+  "peerDependenciesMeta": {
+    "@alchemy.run/cloudflare": {
+      "optional": true
+    },
+    "@effect/platform-node": {
+      "optional": true
+    },
+    "alchemy": {
+      "optional": true
+    },
+    "playwright": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    }
+  }
+}
