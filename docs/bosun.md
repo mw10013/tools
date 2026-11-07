@@ -6,8 +6,12 @@ assigns ports ahead of time and many checkouts run side by side.
 
 ## Usage
 
-Run bosun from anywhere inside the checkout. It works on the root of the git
-worktree around the working directory.
+Run bosun from anywhere inside the checkout. It works on the app root around
+the working directory: the nearest folder upward that holds a `package.json`,
+never above the git worktree's toplevel, and the toplevel when none does. In a
+single-app repo that is the toplevel; in a monorepo each app (`apps/x`) has its
+own servers. The command runs there, and `.bosun/` and the status JSON's `log`
+path are relative to it.
 
 ```sh
 bosun start <name> [--note text] [--timeout seconds] -- <command...>

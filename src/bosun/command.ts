@@ -12,9 +12,9 @@ import * as Flag from "effect/cli/Flag";
 import * as Console from "effect/Console";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as ChildProcess from "effect/process/ChildProcess";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Schema from "effect/Schema";
+
+import * as Git from "#wt/git.ts";
 
 import { RunId, ServerName } from "./domain.ts";
 import * as Bosun from "./server.ts";
@@ -28,20 +28,7 @@ export class NotInCheckoutError extends Schema.TaggedError<NotInCheckoutError>()
   }
 }
 
-const checkoutRoot = Effect.gen(function* () {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const text = yield* spawner.string(
-    ChildProcess.make("git", ["rev-parse", "--show-toplevel"], {
-      cwd: process.cwd(),
-      stdin: "ignore",
-    }),
-  );
-  return text.trim();
-}).pipe(
-  Effect.filterOrFail(
-    (root) => root !== "",
-    () => new NotInCheckoutError({ directory: process.cwd() }),
-  ),
+const appRoot = Git.appRoot(process.cwd()).pipe(
   Effect.mapError(() => new NotInCheckoutError({ directory: process.cwd() })),
 );
 
@@ -97,7 +84,7 @@ const start = Command.make(
   ({ name, note, timeout, command }) =>
     reported(
       Effect.gen(function* () {
-        const root = yield* checkoutRoot;
+        const root = yield* appRoot;
         const [program, ...args] = command;
         yield* printJson(
           yield* Bosun.start(root, name, [program, ...args], {
@@ -132,7 +119,7 @@ const runCommand = Command.make(
   },
   ({ name, run, note, command }) =>
     Effect.gen(function* () {
-      const root = yield* checkoutRoot;
+      const root = yield* appRoot;
       const [program, ...args] = command;
       const code = yield* Bosun.run(root, name, run, note, [program, ...args]);
       process.exitCode = code;
@@ -146,7 +133,7 @@ const runCommand = Command.make(
 const stop = Command.make("stop", { name }, ({ name }) =>
   reported(
     Effect.gen(function* () {
-      yield* Bosun.stop(yield* checkoutRoot, name);
+      yield* Bosun.stop(yield* appRoot, name);
     }),
   ),
 ).pipe(
@@ -158,7 +145,7 @@ const stop = Command.make("stop", { name }, ({ name }) =>
 const status = Command.make("status", { name }, ({ name }) =>
   reported(
     Effect.gen(function* () {
-      const now = yield* Bosun.status(yield* checkoutRoot, name);
+      const now = yield* Bosun.status(yield* appRoot, name);
       yield* printJson(now);
       if (now.state !== "running") process.exitCode = 3;
     }),
@@ -187,7 +174,7 @@ const logs = Command.make(
   ({ name, lines, follow }) =>
     reported(
       Effect.gen(function* () {
-        yield* Bosun.logs(yield* checkoutRoot, name, lines, follow);
+        yield* Bosun.logs(yield* appRoot, name, lines, follow);
       }),
     ),
 ).pipe(Command.withShortDescription("Print or follow the server's log"));

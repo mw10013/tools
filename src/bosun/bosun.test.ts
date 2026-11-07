@@ -46,9 +46,9 @@ interface Printed {
 
 let checkout: string;
 
-const bosun = (...args: string[]) => {
+const bosunIn = (cwd: string, ...args: string[]) => {
   const result = spawnSync("vpx", [ENTRY, ...args], {
-    cwd: checkout,
+    cwd,
     encoding: "utf8",
   });
   return {
@@ -59,6 +59,8 @@ const bosun = (...args: string[]) => {
     stderr: result.stderr,
   };
 };
+
+const bosun = (...args: string[]) => bosunIn(checkout, ...args);
 
 const log = () =>
   fs.readFileSync(path.join(checkout, ".bosun/dev/log/current"), "utf8");
@@ -113,6 +115,30 @@ describe("bosun", () => {
     expect(log()).toContain("a stderr line");
     expect(log()).toContain("got SIGTERM");
     expect(log()).toContain(`==== dev exit run=${started.json.run} code=0`);
+  }, 60_000);
+
+  it("keeps a monorepo app's servers in that app's folder", () => {
+    const app = path.join(checkout, "apps/x");
+    fs.mkdirSync(path.join(app, "src"), { recursive: true });
+    fs.writeFileSync(path.join(checkout, "package.json"), "{}\n");
+    fs.writeFileSync(path.join(app, "package.json"), "{}\n");
+    fs.renameSync(
+      path.join(checkout, "server.mjs"),
+      path.join(app, "server.mjs"),
+    );
+    const inSrc = path.join(app, "src");
+
+    const started = bosunIn(inSrc, "start", "dev", "--", "node", "server.mjs");
+    expect(started.code).toBe(0);
+    expect(started.json.log).toBe(".bosun/dev/log/current");
+    expect(bosunIn(app, "status", "dev").json.state).toBe("running");
+    expect(bosun("status", "dev").json.state).toBe("stopped");
+    expect(fs.existsSync(path.join(checkout, ".bosun"))).toBe(false);
+
+    expect(bosunIn(inSrc, "stop", "dev").code).toBe(0);
+    expect(
+      fs.readFileSync(path.join(app, ".bosun/dev/log/current"), "utf8"),
+    ).toContain(`==== dev exit run=${started.json.run} code=0`);
   }, 60_000);
 
   it("logs the exit of a server that SIGTERM ends without its own handler", () => {
