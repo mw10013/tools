@@ -137,7 +137,7 @@ const init = Command.make(
     run(Worktree.init(".", target), (initialized) => printJson(initialized)),
 ).pipe(
   Command.withShortDescription(
-    "Share again: .env from the main checkout, refs and .env.* links",
+    "Share again: link the main checkout's untracked .env, .env.* and refs at any depth",
   ),
 );
 
