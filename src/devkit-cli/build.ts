@@ -46,12 +46,17 @@ export const entriesOf = (source: unknown): readonly string[] => {
  * `dist/` and each bin to its code. `imports` serves the source tree alone, `private` keeps the
  * source from being published to a registry by accident, and `//` is a note for the source's
  * readers.
+ * A release stamps its `version`, which `pnpm list` reports as the locked version.
  */
-export const builtManifest = (source: Record<string, unknown>) => {
+export const builtManifest = (
+  source: Record<string, unknown>,
+  version?: string,
+) => {
   const { exports, bin } = decodeSource(source);
   const { "//": _note, imports: _imports, private: _private, ...rest } = source;
   return {
     ...rest,
+    ...(version === undefined ? {} : { version }),
     exports: Object.fromEntries(
       Object.entries(exports).map(([key, target]) => [
         key,
@@ -65,12 +70,14 @@ export const builtManifest = (source: Record<string, unknown>) => {
 };
 
 /**
- * Builds the package into `outDirectory`, replacing what was there. `vp pack` runs in
+ * Builds the package into `outDirectory`, replacing what was there, and stamps `version` into its
+ * manifest when given. `vp pack` runs in
  * `src/devkit`, so Rolldown reads `src/devkit/package.json`'s peer dependencies and leaves them
  * external, and `tsconfig.build.json` limits type-checking to devkit instead of all of tools.
  */
 export const build = Effect.fn("DevkitBuild.build")(function* (
   outDirectory: string = OUTPUT,
+  version?: string,
 ) {
   const fs = yield* FileSystem.FileSystem;
   const source = yield* decodeJsonObject(
@@ -91,7 +98,7 @@ export const build = Effect.fn("DevkitBuild.build")(function* (
     "-d",
     path.join(outDirectory, "dist"),
   ]);
-  const manifest = builtManifest(source);
+  const manifest = builtManifest(source, version);
   yield* fs.writeFileString(
     path.join(outDirectory, "package.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,

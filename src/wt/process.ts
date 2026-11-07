@@ -22,10 +22,12 @@ export interface Output {
 const lastLine = (text: string) =>
   text.trim().split("\n").at(-1) ?? "no output";
 
+/** `env` is added to the inherited environment. */
 export const capture = Effect.fn("Process.capture")(function* (
   directory: string,
   program: string,
   args: readonly string[],
+  env?: Readonly<Record<string, string>>,
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const command = [program, ...args].join(" ");
@@ -38,6 +40,7 @@ export const capture = Effect.fn("Process.capture")(function* (
           cwd: directory,
           stdin: "ignore",
           extendEnv: true,
+          ...(env === undefined ? {} : { env }),
         }),
       );
       const [stdout, stderr, exitCode] = yield* Effect.all(
@@ -57,8 +60,9 @@ export const run = Effect.fn("Process.run")(function* (
   directory: string,
   program: string,
   args: readonly string[],
+  env?: Readonly<Record<string, string>>,
 ) {
-  const output = yield* capture(directory, program, args);
+  const output = yield* capture(directory, program, args, env);
   if (output.exitCode !== 0)
     return yield* new CommandFailedError({
       command: [program, ...args].join(" "),

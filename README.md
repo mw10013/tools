@@ -381,46 +381,101 @@ exec vpx /Users/mw/projects/tools/wt.ts "$@"
 
 ## Shared app tooling
 
-`devkit` holds the dev tooling Baton, motio, bang and saas share, in
-`src/devkit/<layer>/`: `core` for any project, `cloudflare` for Alchemy on
-Workers, `shopify` for an embedded Shopify app. Each layer includes the ones
-before it. An app commits a read-only copy and imports it through
-`"#devkit/*": "./vendor/devkit/*"` in `package.json`, so the app builds alone,
-on Workers Builds too, and devkit resolves the app's own `effect` and Alchemy.
-`devkit` works on the app root around the working directory: the nearest folder
-upward that holds a `package.json`, never above the git toplevel. So in a
-monorepo it syncs and checks `apps/x/vendor/devkit/` against `apps/x`'s
-installed Alchemy when run inside `apps/x`.
+`devkit` is the dev tooling the apps share, in `src/devkit/<layer>/`: `core` for
+any project, `cloudflare` for Alchemy on Workers, `shopify` for an embedded
+Shopify app. It ships as the package `@mw10013/devkit`, installed from a release
+tag of this public repository:
 
-```sh
-devkit sync shopify   # copy tools' HEAD into vendor/devkit/; later syncs reuse the layer
-devkit sync           # bring the app up to tools' HEAD
-devkit status         # edited files, whether a sync would change anything, Alchemy drift
+```json
+"@mw10013/devkit": "github:mw10013/tools#devkit-v0.1.0"
 ```
 
-A sync copies committed source only, leaves `*.test.ts` in tools, and writes
-`vendor/devkit/devkit.json` with tools' commit, each file's SHA-256 and, for
-`cloudflare` and `shopify`, the Alchemy version tools pins (its
-`alchemy` devDependency, the apps' exact version); sync and status print a
-mismatch with the app's installed Alchemy. It
-refuses while a vendored file differs from that record: fix devkit in tools,
-commit, and sync. The app's formatter skips `vendor/` (tools formats at 80
-columns); its linter and type check cover it, since a file the linter ignores
-is not type-checked either.
+A pnpm monorepo declares that spec once, in its `pnpm-workspace.yaml` catalog,
+and each package depends on it as `catalog:`. The lockfile pins the tag's commit
+and the tarball's sha512, and the tarball downloads from codeload without a token,
+so Workers Builds installs it like any dependency. The app imports
+`@mw10013/devkit/<layer>/<module>` and runs the `devkit-*` bins; it holds no copy.
 
-`core/lint/rules.ts` is the house lint rule set. tools lints the whole repo
-with it, devkit included, so vendored devkit passes the rules an app applies to
-it. An app spreads `lint` from `#devkit/core/lint/rules.ts` into its config and
-adds only its own data: `ignorePatterns`, the website's plugins and rules, and
-its import boundaries, which start from `baseRestrictions`.
+```sh
+devkit release 0.2.0 --dry-run  # everything except the tag and the push
+devkit release 0.2.0            # publish devkit-v0.2.0
+devkit status                   # this app: declared spec, locked version, latest release
+devkit status --projects ~/projects  # every consumer one level under ~/projects
+devkit upgrade                  # this app to the latest release (or: devkit upgrade 0.2.0)
+devkit check-pin                # fail unless devkit is pinned to a release
+```
 
-Two files are runnable. `cloudflare/logs.ts` reads a deployed stage's Worker
-logs from Workers Observability: `"logs": "vpx vendor/devkit/cloudflare/logs.ts"`
-(`show`, `follow`, `wait`). `cloudflare/deployed-stage.ts` sets up staging and
-production's Workers Builds deploys from a laptop:
-`"stage": "vpx vendor/devkit/cloudflare/deployed-stage.ts"`, run as
-`vp run stage <up|check|reset> <stage>` (`vp run stage --help`). `up` checks
-`.env.<stage>` against the fields the app declares in `stacks/stage-env.ts`,
+`devkit` works on the app root around the working directory: the nearest folder
+upward that holds a `package.json`, never above the git toplevel. Each command
+prints one JSON document on stdout, `{ "devkit": 1, ... }`, and its progress on
+stderr; a typed failure exits 1 with `{ "devkit": 1, "error": { "_tag", "message" } }`.
+
+### Release
+
+`devkit release <major.minor.patch>` runs in tools. It refuses unless the checkout
+is clean, `HEAD` is the commit `origin` holds as `main` (read with `git ls-remote`,
+not a possibly stale remote-tracking ref), and the version is greater than the
+latest `devkit-v*` tag. It then runs `vp check` and
+`vp test run src/devkit src/devkit-cli`, the whole gate and not only the build
+test: an app loads devkit's lint plugin and type-checks its declarations, so a lint
+or type error in devkit breaks every consumer, and the build test sees neither.
+
+It builds the package into a temporary directory with the version stamped into
+`package.json` (`pnpm list` reports it as the locked version), adds `LICENSE` and a
+short `README.md`, and writes that tree through a temporary index, so the working
+tree is never touched. The commit is an orphan whose parent is the previous release
+commit; its message, which is also the tag's annotation, records the source sha and
+the `src/devkit` commits since the previous release. Then it creates the annotated
+tag `devkit-v<version>` and pushes that tag, nothing else. No branch holds the
+release commit.
+
+A tag is never moved, because lockfiles pin its commit. Re-running a release whose
+tag exists with the same tree succeeds, and pushes the tag if only the local copy
+exists; a different tree fails. `--dry-run` runs the checks, the build and the
+commit, but creates no tag, because a local tag is a ref every worktree of the
+repository shares, and pushes nothing.
+
+### Status and upgrade
+
+`devkit status` reports one row for the app: `spec` and where it is declared (a
+`package.json` dependency or devDependency, or the workspace catalog behind
+`catalog:`), `declared` (the release it pins), `locked` (what `pnpm list --json
+--lockfile-only` resolved), and `latest` (the newest `devkit-v*` tag on GitHub,
+`unknown` offline). `state` is `current` or `behind` by comparing `declared` with
+`latest`, `unknown` when `latest` is unknown, `unpinned` for a `file:`, `link:`,
+branch, sha or prerelease spec, `legacy` for a `vendor/devkit/devkit.json` stamp
+(its `legacy` field is the tools sha) with no declaration, or `none`.
+
+`--projects <dir>` scans each directory one level under `<dir>`, skipping
+`node_modules`, `.git` and `refs`, and reports a row for each repository root and
+workspace package that declares devkit or holds a legacy stamp. Consumers are found
+by looking, never from a list.
+
+`devkit upgrade [x.y.z]` refuses a dirty tree, sets the one declaration to
+`github:mw10013/tools#devkit-v<x.y.z>` (the latest release by default), runs
+`vp install` and prints the release log: the annotations of the tags after the old
+version up to the new. It edits the workspace catalog when the spec lives there,
+and the `package.json` otherwise, changing only that line. It does not commit,
+test or open a pull request.
+
+`devkit check-pin` exits 1 unless every declaration under the app, its workspace
+packages included, is a release pin: a `file:`, `link:`, branch, bare sha or
+prerelease spec, or a legacy stamp, fails. An app's `vp check` or CI can run it so
+a trial spec cannot merge.
+
+`devkit sync` is retired and refuses.
+
+`core/lint/rules.ts` is the house lint rule set. tools lints the whole repo with
+it, devkit included. An app spreads `lint` from `@mw10013/devkit/core/lint/rules`
+into its config and adds only its own data: `ignorePatterns`, the website's plugins
+and rules, and its import boundaries, which start from `baseRestrictions`.
+
+Two bins cover the deployed stages. `devkit-logs` reads a deployed stage's Worker
+logs from Workers Observability (`show`, `follow`, `wait`). `devkit-stage` sets up
+staging and production's Workers Builds deploys from a laptop, run as
+`vp run stage <up|check|reset> <stage>` with `"stage": "devkit-stage"` (`vp run
+stage --help`). `up` checks `.env.<stage>` against the fields the app declares in
+`stacks/stage-env.ts`,
 gives a stage with no Website its first deploy from the laptop (`alchemy deploy`
 with the file's values in its environment, only from a clean checkout whose
 `HEAD` is the stage's branch on `origin`), makes its one trigger canonical, sets
@@ -456,5 +511,4 @@ specifier, through its `@mw10013/devkit` link to `src/devkit`.
 The app is `app(directory)` from `core/app.ts` (nearest `package.json`, never
 above the git toplevel), which replaced `ROOT` and `APP_NAME`: a config passes
 `import.meta.dirname`, a CLI takes the working directory, and `integ-setup` takes
-the Vitest project's root. A vendored copy still syncs, but a synced app must
-move to `app()` and stop running `vpx vendor/devkit/...` for the three commands.
+the Vitest project's root.
