@@ -18,6 +18,15 @@ import * as Devkit from "./sync.ts";
 
 const TOOLS = path.resolve(import.meta.dirname, "../..");
 
+const warnAlchemy = (mismatch: Option.Option<Devkit.AlchemyMismatch>) =>
+  Option.match(mismatch, {
+    onNone: () => Effect.void,
+    onSome: ({ devkit, app }) =>
+      Console.error(
+        `devkit: built against alchemy ${devkit}, but this repo has ${app} installed; align the app's alchemy with tools' (or tools' with the app's) and sync`,
+      ),
+  });
+
 const printJson = (value: object) =>
   Console.log(JSON.stringify({ devkit: 1, ...value }, null, 2));
 
@@ -69,7 +78,11 @@ const sync = Command.make(
             ? `devkit: ${Devkit.VENDOR} already matches tools ${synced.tools.slice(0, 7)}`
             : `devkit: synced ${synced.layer} at tools ${synced.tools.slice(0, 7)}: ${String(count)} file(s) changed`,
         );
-        return synced;
+        yield* warnAlchemy(synced.alchemyMismatch);
+        return {
+          ...synced,
+          alchemyMismatch: Option.getOrNull(synced.alchemyMismatch),
+        };
       }),
     ),
 ).pipe(
@@ -82,18 +95,20 @@ const status = Command.make("status", {}, () =>
   run(
     Effect.gen(function* () {
       const s = yield* Devkit.status(TOOLS, yield* appRoot);
+      yield* warnAlchemy(s.alchemyMismatch);
       return {
         tools: Option.getOrNull(s.tools),
         head: s.head,
         layer: Option.getOrNull(s.layer),
         behind: s.behind,
         edited: s.edited,
+        alchemyMismatch: Option.getOrNull(s.alchemyMismatch),
       };
     }),
   ),
 ).pipe(
   Command.withShortDescription(
-    "Whether vendor/devkit/ was edited, and whether a sync would change it",
+    "Whether vendor/devkit/ was edited, whether a sync would change it, and whether its Alchemy matches the repo's",
   ),
 );
 

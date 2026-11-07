@@ -61,6 +61,7 @@ beforeEach(() => {
   git(tools, "init", "--quiet");
   git(tools, "config", "user.email", "devkit@test");
   git(tools, "config", "user.name", "devkit");
+  write(tools, "package.json", "{}\n");
   write(tools, "src/devkit/core/command.ts", "export const a = 1;\n");
   write(tools, "src/devkit/core/command.test.ts", "test\n");
   write(tools, "src/devkit/core/lint/rules.ts", "export const r = 1;\n");
@@ -125,6 +126,36 @@ describe("devkit sync", () => {
     expect(value(await runEffect(Devkit.status(tools, app))).behind).toBe(
       false,
     );
+  });
+
+  it("stamps tools' Alchemy for a layer that imports it, and flags an app on another", async () => {
+    write(
+      tools,
+      "package.json",
+      JSON.stringify({ devDependencies: { alchemy: "2.0.0-beta.85" } }),
+    );
+    commit();
+    value(await sync("core"));
+    expect(JSON.parse(vendored("devkit.json")).alchemy).toBeUndefined();
+    write(
+      app,
+      "node_modules/alchemy/package.json",
+      JSON.stringify({ name: "alchemy", version: "2.0.0-beta.84" }),
+    );
+    const synced = value(await sync("cloudflare"));
+    expect(JSON.parse(vendored("devkit.json")).alchemy).toBe("2.0.0-beta.85");
+    expect(Option.getOrNull(synced.alchemyMismatch)).toEqual({
+      devkit: "2.0.0-beta.85",
+      app: "2.0.0-beta.84",
+    });
+    write(
+      app,
+      "node_modules/alchemy/package.json",
+      JSON.stringify({ name: "alchemy", version: "2.0.0-beta.85" }),
+    );
+    expect(
+      value(await runEffect(Devkit.status(tools, app))).alchemyMismatch,
+    ).toEqual(Option.none());
   });
 
   it("refuses while a vendored file is edited, and status names it", async () => {

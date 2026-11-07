@@ -373,26 +373,34 @@ exec vpx /Users/mw/projects/tools/wt.ts "$@"
 
 ## Shared app tooling
 
-`devkit` holds the dev tooling Baton, motio and bang share, in
+`devkit` holds the dev tooling Baton, motio, bang and saas share, in
 `src/devkit/<layer>/`: `core` for any project, `cloudflare` for Alchemy on
 Workers, `shopify` for an embedded Shopify app. Each layer includes the ones
 before it. An app commits a read-only copy and imports it through
 `"#devkit/*": "./vendor/devkit/*"` in `package.json`, so the app builds alone,
-on Workers Builds too, and devkit resolves the app's own `effect`.
+on Workers Builds too, and devkit resolves the app's own `effect` and Alchemy.
 
 ```sh
 devkit sync shopify   # copy tools' HEAD into vendor/devkit/; later syncs reuse the layer
 devkit sync           # bring the app up to tools' HEAD
-devkit status         # edited files, and whether a sync would change anything
+devkit status         # edited files, whether a sync would change anything, Alchemy drift
 ```
 
 A sync copies committed source only, leaves `*.test.ts` in tools, and writes
-`vendor/devkit/devkit.json` with tools' commit and each file's SHA-256. It
+`vendor/devkit/devkit.json` with tools' commit, each file's SHA-256 and, for
+`cloudflare` and `shopify`, the Alchemy version tools pins (its
+`alchemy` devDependency, the apps' exact version); sync and status print a
+mismatch with the app's installed Alchemy. It
 refuses while a vendored file differs from that record: fix devkit in tools,
 commit, and sync. The app's formatter skips `vendor/` (tools formats at 80
 columns); its linter and type check cover it, since a file the linter ignores
 is not type-checked either.
 
-`cloudflare/logs.ts` is the one runnable file: a deployed stage's Worker logs
-from Workers Observability. An app's `package.json` runs it as
-`"logs": "vpx vendor/devkit/cloudflare/logs.ts"` (`show`, `follow`, `wait`).
+Two files are runnable. `cloudflare/logs.ts` reads a deployed stage's Worker
+logs from Workers Observability: `"logs": "vpx vendor/devkit/cloudflare/logs.ts"`
+(`show`, `follow`, `wait`). `cloudflare/deployed-stage.ts` deploys staging and
+production and owns their Workers Builds triggers:
+`"stage": "vpx vendor/devkit/cloudflare/deployed-stage.ts"` (`check`,
+`trigger`, `reset`, `deploy`), with the stack helpers it relies on in
+`cloudflare/deployed-stack.ts`. The coder skill's `deployed-stages.md` is the
+lifecycle.

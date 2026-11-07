@@ -119,12 +119,23 @@ export const environmentOf = (stage: string): Effect.Effect<Environment> =>
  *
  * Changing a deployed Worker's name replaces it, Durable Object storage included.
  */
-export const workerNameOf = (
+export function workerNameOf(
+  app: string,
+  stage: Deployed,
+  worker: "website" | "backend",
+): string;
+export function workerNameOf(
   app: string,
   stage: string,
   worker: "website" | "backend",
-): string | undefined =>
-  isDeployed(stage) ? `${app}-${worker}-${stage}` : undefined;
+): string | undefined;
+export function workerNameOf(
+  app: string,
+  stage: string,
+  worker: "website" | "backend",
+): string | undefined {
+  return isDeployed(stage) ? `${app}-${worker}-${stage}` : undefined;
+}
 
 /**
  * Whether this code runs in a deployed bundle rather than while the stack is planned: Alchemy's
