@@ -18,7 +18,7 @@ import * as Option from "effect/Option";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-import { APP_NAME, ROOT } from "#devkit/core/app.ts";
+import { app } from "#devkit/core/app.ts";
 
 import { type Server, ServerError, step, stopServer } from "./server.ts";
 import type { WebEnvironment } from "./web.ts";
@@ -27,7 +27,7 @@ export const stageStoreFile = (environment: WebEnvironment) =>
   `.state/${environment}.store`;
 
 export const stageStateDirectory = (stage: string) =>
-  `.alchemy/state/${APP_NAME}/${stage}`;
+  `.alchemy/state/${app().name}/${stage}`;
 
 export const staleStageReason = (
   stage: { readonly exists: boolean; readonly store: Option.Option<string> },
@@ -47,7 +47,7 @@ export const recordedStore = (server: Server) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     return yield* fs
-      .readFileString(path.join(ROOT, stageStoreFile(server.environment)))
+      .readFileString(path.join(app().root, stageStoreFile(server.environment)))
       .pipe(
         Effect.map((text) => text.trim()),
         Effect.option,
@@ -57,7 +57,7 @@ export const recordedStore = (server: Server) =>
 export const recordStore = (server: Server) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    const file = path.join(ROOT, stageStoreFile(server.environment));
+    const file = path.join(app().root, stageStoreFile(server.environment));
     yield* fs.makeDirectory(path.dirname(file), { recursive: true });
     yield* fs.writeFileString(file, `${server.store}\n`);
   });
@@ -71,7 +71,7 @@ export const destroyStage = (server: Server) =>
         "alchemy",
         ["destroy", "--stage", server.stage, "--yes"],
         {
-          cwd: ROOT,
+          cwd: app().root,
           stdin: "ignore",
           stdout: "inherit",
           stderr: "inherit",
@@ -88,7 +88,7 @@ export const resetStaleStage = (server: Server) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const exists = yield* fs.exists(
-      path.join(ROOT, stageStateDirectory(server.stage)),
+      path.join(app().root, stageStateDirectory(server.stage)),
     );
     const reason = staleStageReason(
       { exists, store: yield* recordedStore(server) },
@@ -100,7 +100,10 @@ export const resetStaleStage = (server: Server) =>
     );
     yield* step("stop", stopServer(server.environment));
     yield* step(`destroy stage ${server.stage}`, destroyStage(server));
-    yield* fs.remove(path.join(ROOT, stageStoreFile(server.environment)), {
-      force: true,
-    });
+    yield* fs.remove(
+      path.join(app().root, stageStoreFile(server.environment)),
+      {
+        force: true,
+      },
+    );
   });

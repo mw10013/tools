@@ -61,7 +61,7 @@ import {
   type StageRun,
   workerNameOf,
 } from "#devkit/cloudflare/stage.ts";
-import { APP_NAME, ROOT } from "#devkit/core/app.ts";
+import { app } from "#devkit/core/app.ts";
 import { runCommand } from "#devkit/core/command.ts";
 
 class StageError extends Schema.TaggedError<StageError>()("StageError", {
@@ -78,7 +78,8 @@ export const SHARED_BUILD_TOKEN = "Workers Builds - 2026-05-31 17:29";
 /** The app's stage fields ({@link StageFields}), its default export, relative to its root. */
 export const STAGE_ENV_MODULE = "stacks/stage-env.ts";
 
-const websiteOf = (stage: Deployed) => workerNameOf(APP_NAME, stage, "website");
+const websiteOf = (stage: Deployed) =>
+  workerNameOf(app().name, stage, "website");
 
 /** A trigger as `cf builds triggers list` gives it. */
 export const Trigger = Schema.Struct({
@@ -290,7 +291,7 @@ const cf = (args: readonly string[]) =>
 /** The app's stage fields, from {@link STAGE_ENV_MODULE}. */
 const loadStageFields = Effect.fn("DeployedStage.loadStageFields")(
   function* () {
-    const file = path.join(ROOT, STAGE_ENV_MODULE);
+    const file = path.join(app().root, STAGE_ENV_MODULE);
     const module: unknown = yield* Effect.tryPromise({
       try: () => import(pathToFileURL(file).href),
       catch: () => new StageError({ message: `cannot load ${file}` }),
@@ -314,10 +315,11 @@ const readStageFile = Effect.fn("DeployedStage.readStageFile")(function* (
   const fields = yield* loadStageFields();
   const name = `.env.${stage}`;
   const text = yield* (yield* FileSystem.FileSystem)
-    .readFileString(path.join(ROOT, name))
+    .readFileString(path.join(app().root, name))
     .pipe(
       Effect.mapError(
-        () => new StageError({ message: `cannot read ${name} at ${ROOT}` }),
+        () =>
+          new StageError({ message: `cannot read ${name} at ${app().root}` }),
       ),
     );
   const file = Object.fromEntries(
@@ -419,7 +421,7 @@ const previewsEnabled = (tag: string) =>
   );
 
 const git = (args: readonly string[]) =>
-  runCommand("git", ["-C", ROOT, ...args]).pipe(
+  runCommand("git", ["-C", app().root, ...args]).pipe(
     Effect.map((output) => output.trim()),
     Effect.mapError((error) => new StageError({ message: error.message })),
   );
@@ -819,7 +821,7 @@ const alchemy = Effect.fn("DeployedStage.alchemy")(function* (
   const exitCode = yield* spawner
     .exitCode(
       ChildProcess.make("alchemy", [...args], {
-        cwd: ROOT,
+        cwd: app().root,
         stdin: "ignore",
         stdout: "inherit",
         stderr: "inherit",
@@ -861,7 +863,7 @@ const plan = Effect.fn("DeployedStage.plan")(function* (
   const handle = yield* spawner
     .spawn(
       ChildProcess.make("alchemy", ["plan", "--stage", stage], {
-        cwd: ROOT,
+        cwd: app().root,
         stdin: "ignore",
         env: { ...alchemyEnv(variables, "check"), NO_COLOR: "1" },
         extendEnv: true,

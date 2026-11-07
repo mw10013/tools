@@ -1,7 +1,7 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { APP_NAME } from "#devkit/core/app.ts";
+import { app } from "#devkit/core/app.ts";
 
 import { Event, lineOf, redactUrl } from "./logs.ts";
 
@@ -12,7 +12,7 @@ const event = (fields: Record<string, unknown>) =>
     ...fields,
     $metadata: {
       id: "e1",
-      service: `${APP_NAME}-backend-staging`,
+      service: `${app().name}-backend-staging`,
       ...(fields.$metadata as object | undefined),
     },
   });
@@ -37,7 +37,7 @@ describe("redactUrl", () => {
 describe("lineOf", () => {
   it("names the Worker from the app's deployed Worker names", () => {
     const website = event({
-      $metadata: { service: `${APP_NAME}-website-staging` },
+      $metadata: { service: `${app().name}-website-staging` },
     });
     expect(lineOf("staging", event({}))).toContain(" | backend | ");
     expect(lineOf("staging", website)).toContain(" | website | ");

@@ -23,7 +23,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
 import { Deployed, workerNameOf } from "#devkit/cloudflare/stage.ts";
-import { APP_NAME } from "#devkit/core/app.ts";
+import { app } from "#devkit/core/app.ts";
 import { runCommand } from "#devkit/core/command.ts";
 
 class LogsError extends Schema.TaggedError<LogsError>()("LogsError", {
@@ -136,7 +136,7 @@ export const lineOf = (stage: Deployed, event: Event) => {
     );
   return [
     DateTime.formatIso(event.timestamp),
-    event.$metadata.service === workerNameOf(APP_NAME, stage, "backend")
+    event.$metadata.service === workerNameOf(app().name, stage, "backend")
       ? "backend"
       : "website",
     (level ?? "").toLowerCase(),
@@ -159,7 +159,7 @@ const query = Effect.fn("Logs.query")(function* (
     key: "$metadata.service",
     operation: "eq",
     type: "string",
-    value: workerNameOf(APP_NAME, stage, worker),
+    value: workerNameOf(app().name, stage, worker),
   });
   const body = {
     queryId: "adhoc",
