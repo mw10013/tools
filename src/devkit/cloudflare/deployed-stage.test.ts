@@ -364,7 +364,7 @@ describe("ensureWebsite", () => {
   it("refuses a checkout that is not origin's branch", async () => {
     checkout({ head: "abc123\n", origin: "def456\n" });
     expect(failureOf(await run("staging"))).toContain(
-      "HEAD abc123 is not origin/main def456; run git switch main && git pull --ff-only",
+      "HEAD abc123 is not origin/main def456; check out main at origin/main (git switch main, then git pull --ff-only if behind or git push if ahead)",
     );
     expect(read("alchemy.args")).toBe("");
   });

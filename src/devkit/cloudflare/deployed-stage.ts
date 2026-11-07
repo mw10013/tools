@@ -678,7 +678,7 @@ const requireBranchCheckout = Effect.fn("DeployedStage.requireBranchCheckout")(
     const remote = yield* git(["rev-parse", `origin/${branch}`]);
     if (head !== remote)
       return yield* new StageError({
-        message: `the first deploy of ${stage} ships this checkout, whose HEAD ${head} is not origin/${branch} ${remote}; run git switch ${branch} && git pull --ff-only, then rerun`,
+        message: `the first deploy of ${stage} ships this checkout, whose HEAD ${head} is not origin/${branch} ${remote}; check out ${branch} at origin/${branch} (git switch ${branch}, then git pull --ff-only if behind or git push if ahead), then rerun`,
       });
   },
 );
@@ -952,6 +952,9 @@ const reset = Effect.fn("DeployedStage.reset")(function* (
   stage: ResettableDeployed,
 ) {
   yield* readStageFile(stage);
+  // The destroy leaves no Website, so `up` will need a first deploy from this checkout: check it
+  // before destroying anything.
+  yield* requireBranchCheckout(stage);
   yield* alchemy(["destroy", "--stage", stage, "--yes"], "reset");
   yield* up(stage, { dryRun: false, confirmed: false });
 });
