@@ -259,39 +259,18 @@ describe("wt init", () => {
     fs.mkdirSync(path.join(repo, "refs"));
   };
 
-  it("copies .env and links refs and untracked .env files, leaving tracked ones", async () => {
+  it("links refs and untracked .env files, leaving tracked ones", async () => {
     shareMain();
     const exit = await create(["shared"]);
     const worktree = Exit.isSuccess(exit) ? exit.value.path : "";
-    expect(fs.readFileSync(path.join(worktree, ".env"), "utf8")).toBe(
-      "A=1\nB=2\n",
-    );
-    expect(fs.lstatSync(path.join(worktree, ".env")).isSymbolicLink()).toBe(
-      false,
-    );
-    expect(fs.readlinkSync(path.join(worktree, ".env.staging"))).toBe(
-      path.join(repo, ".env.staging"),
-    );
-    expect(fs.readlinkSync(path.join(worktree, "refs"))).toBe(
-      path.join(repo, "refs"),
-    );
+    for (const name of [".env", ".env.staging", "refs"])
+      expect(fs.readlinkSync(path.join(worktree, name))).toBe(
+        path.join(repo, name),
+      );
     expect(
       fs.lstatSync(path.join(worktree, ".env.example")).isSymbolicLink(),
     ).toBe(false);
     expect(git(worktree, "status", "--porcelain")).toBe("");
-  }, 30_000);
-
-  it("rebuilds .env from the main checkout's on a second run", async () => {
-    shareMain();
-    const exit = await create(["again"]);
-    const worktree = Exit.isSuccess(exit) ? exit.value.path : "";
-    fs.writeFileSync(path.join(repo, ".env"), "A=1\nC=3\n");
-    expect(
-      Exit.isSuccess(await runEffect(Worktree.init(worktree, Option.none()))),
-    ).toBe(true);
-    expect(fs.readFileSync(path.join(worktree, ".env"), "utf8")).toBe(
-      "A=1\nC=3\n",
-    );
   }, 30_000);
 
   it("refuses a real file where a link belongs", async () => {

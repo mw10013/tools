@@ -3,8 +3,8 @@ import path from "node:path";
 /**
  * A checkout of this repository is either the main checkout, whose `.git` is
  * the repository, or a linked worktree on any branch, which `wt new` creates
- * under `~/.t3/worktrees/<project>/<name>`. Each checkout has its
- * own `.env`, `.alchemy/`, `.bosun/`, `.state/` and `.test-results/`, and its own berth leases
+ * under `~/.t3/worktrees/<project>/<name>` with `.env` linked to the main checkout's. Each
+ * checkout has its own `.alchemy/`, `.bosun/`, `.state/` and `.test-results/`, and its own berth leases
  * ({@link "./berth.ts"}), so each runs its own dev server, on a port it picks, and
  * its own `shopify app dev` session on its own dev store ({@link StoreName}).
  *

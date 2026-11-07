@@ -342,19 +342,22 @@ wt new pr 123 --exact         # fail instead of adding -2 when the name is taken
 wt new hotfix --from origin/production
 wt rm                         # the worktree you are in; or wt rm <name|path|branch>
 wt rm --force                 # discard unlanded commits; uncommitted changes still refuse
-wt init                       # set the worktree you are in up again, after the main .env changes
+wt init                       # link the main checkout's shared files again, after one is added
 wt list
 ```
 
 `new` starts from origin's default branch after a fetch, with no upstream, so
-the first push names the branch (`git push -u origin HEAD`). It copies the
-main checkout's `.env` and symlinks its `refs` and every untracked `.env.<suffix>`
-(`.env.staging`, not the tracked `.env.example`), each when the main checkout
-has it. With a `package.json` it runs `vp install --frozen-lockfile`. It runs
+the first push names the branch (`git push -u origin HEAD`). It symlinks every
+untracked `.env`, `.env.<suffix>` (`.env.staging`, not the tracked
+`.env.example`) and `refs` directory the main checkout has, at any depth outside
+`node_modules` (`apps/testbed/.env` as well as `.env`), to the same path in the
+worktree, when the worktree has that path's folder. A worktree's `.env` is the
+main checkout's file, so an edit in either is seen by every checkout. With a `package.json` it runs `vp install --frozen-lockfile`. It runs
 no package script: berth leases come on demand from `vp run dev` and e2e, so a
 repo needs no worktree hooks, and a worktree made by another tool works the
-same. `init` only shares again; a link that is a real file or points elsewhere
-fails rather than being replaced. `rm` removes only landed work: no commits
+same. `init` only shares again. A copy of a shared file identical to the main
+checkout's, as an older `wt` left `.env`, becomes the link; any other file, or a
+link pointing elsewhere, fails rather than being replaced. `rm` removes only landed work: no commits
 beyond origin's default branch, or a merged pull request whose head is the
 branch's tip, which is what a squash merge leaves. It then tears down every app
 in the worktree, at any depth outside `node_modules` and `.git`: `bosun stop
