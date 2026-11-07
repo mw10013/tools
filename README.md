@@ -398,9 +398,9 @@ is not type-checked either.
 
 Two files are runnable. `cloudflare/logs.ts` reads a deployed stage's Worker
 logs from Workers Observability: `"logs": "vpx vendor/devkit/cloudflare/logs.ts"`
-(`show`, `follow`, `wait`). `cloudflare/deployed-stage.ts` deploys staging and
-production and owns their Workers Builds triggers:
+(`show`, `follow`, `wait`). `cloudflare/deployed-stage.ts` runs Alchemy on staging and
+production from a laptop and owns their Workers Builds triggers:
 `"stage": "vpx vendor/devkit/cloudflare/deployed-stage.ts"` (`check`,
-`trigger`, `reset`, `deploy`), with the stack helpers it relies on in
-`cloudflare/deployed-stack.ts`. The coder skill's `deployed-stages.md` is the
+`config`, `trigger`, `reset`, `bootstrap`; `vp run stage --help`), with the
+stack helpers it relies on in `cloudflare/deployed-stack.ts`. The coder skill's `deployed-stages.md` is the
 lifecycle.

@@ -19,14 +19,16 @@ import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
-import { STAGE_RUN } from "#devkit/cloudflare/stage.ts";
+import { STAGE_RUN, StageRun } from "#devkit/cloudflare/stage.ts";
 
 import {
+  alchemyCommandOf,
   decodeRecord,
   decodeStageConfig,
   deployedRunRefusal,
   DeployedRunRefusedError,
   guardDeployedRun,
+  guardShell,
   parseStageFile,
   ShellHoldsStageConfigError,
   shellOverrides,
@@ -186,97 +188,194 @@ describe("shellOverrides", () => {
   });
 });
 
-describe("deployedRunRefusal", () => {
-  it("allows Workers Builds on the stage's branch", () => {
+describe("alchemyCommandOf", () => {
+  it("finds the first word naming an Alchemy command, as Alchemy's CLI does", () => {
     expect(
-      deployedRunRefusal("staging", {
-        WORKERS_CI: "1",
-        WORKERS_CI_BRANCH: "main",
-      }),
+      alchemyCommandOf(["node", "cli.js", "destroy", "--stage", "production"]),
+    ).toBe("destroy");
+    expect(
+      alchemyCommandOf(["node", "cli.js", "deploy", "--config", "plan.ts"]),
+    ).toBe("deploy");
+    expect(alchemyCommandOf(["node", "vitest"])).toBeUndefined();
+  });
+});
+
+describe("deployedRunRefusal", () => {
+  const builds = (branch: string) => ({
+    WORKERS_CI: "1",
+    WORKERS_CI_BRANCH: branch,
+  });
+
+  it("allows Workers Builds' deploy on the stage's branch", () => {
+    expect(
+      deployedRunRefusal("staging", "deploy", builds("main")),
     ).toStrictEqual(Option.none());
     expect(
-      deployedRunRefusal("production", {
-        WORKERS_CI: "1",
-        WORKERS_CI_BRANCH: "production",
-      }),
+      deployedRunRefusal("production", "deploy", builds("production")),
     ).toStrictEqual(Option.none());
   });
 
   it("refuses a build of another branch", () => {
     expect(
       Option.getOrThrow(
-        deployedRunRefusal("production", {
-          WORKERS_CI: "1",
-          WORKERS_CI_BRANCH: "main",
-        }),
+        deployedRunRefusal("production", "deploy", builds("main")),
       ),
     ).toContain("deploys from branch production, not main");
   });
 
-  it("refuses a hand-run alchemy on a laptop, naming the commands to use", () => {
-    const refusal = Option.getOrThrow(deployedRunRefusal("production", {}));
-    expect(refusal).toContain("push to production");
-    expect(refusal).toContain("vp run stage check production");
-    expect(refusal).toContain("vp run stage bootstrap production");
+  it("refuses a hand-run deploy or plan on a laptop, naming the commands to use", () => {
+    for (const command of ["deploy", "plan"] as const) {
+      const refusal = Option.getOrThrow(
+        deployedRunRefusal("production", command, {}),
+      );
+      expect(refusal).toContain("push to production");
+      expect(refusal).toContain("vp run stage check production");
+      expect(refusal).toContain("vp run stage bootstrap production");
+    }
   });
 
-  it("allows the stage CLI's runs, and only the reasons it sets", () => {
-    for (const run of ["bootstrap", "reset", "check"])
-      expect(deployedRunRefusal("staging", { [STAGE_RUN]: run })).toStrictEqual(
-        Option.none(),
-      );
+  it("refuses a hand-run destroy, naming the one command that destroys", () => {
+    for (const stage of ["staging", "production"] as const)
+      expect(
+        Option.getOrThrow(deployedRunRefusal(stage, "destroy", {})),
+      ).toContain("only vp run stage reset staging destroys a deployed stage");
+  });
+
+  it("lets each run reason run only its own commands", () => {
+    const allowed = [
+      ["bootstrap", "deploy", "production"],
+      ["config", "deploy", "production"],
+      ["check", "plan", "production"],
+      ["reset", "destroy", "staging"],
+      ["reset", "deploy", "staging"],
+    ] as const;
+    for (const [run, command, stage] of allowed)
+      expect(
+        deployedRunRefusal(stage, command, { [STAGE_RUN]: run }),
+      ).toStrictEqual(Option.none());
+    const refused = [
+      ["bootstrap", "destroy", "staging"],
+      ["config", "destroy", "staging"],
+      ["check", "deploy", "staging"],
+      ["check", "destroy", "staging"],
+      ["reset", "plan", "staging"],
+    ] as const;
+    for (const [run, command, stage] of refused)
+      expect(
+        Option.isSome(deployedRunRefusal(stage, command, { [STAGE_RUN]: run })),
+      ).toBe(true);
+  });
+
+  it("never lets anything destroy production", () => {
+    for (const env of [
+      builds("production"),
+      ...StageRun.literals.map((run) => ({ [STAGE_RUN]: run })),
+    ])
+      expect(
+        Option.isSome(deployedRunRefusal("production", "destroy", env)),
+      ).toBe(true);
+  });
+
+  it("refuses a run that names no Alchemy command, and a reason the CLI never sets", () => {
     expect(
-      Option.getOrThrow(deployedRunRefusal("staging", { [STAGE_RUN]: "1" })),
+      Option.isSome(
+        deployedRunRefusal("staging", undefined, { [STAGE_RUN]: "reset" }),
+      ),
+    ).toBe(true);
+    expect(
+      Option.getOrThrow(
+        deployedRunRefusal("staging", "plan", { [STAGE_RUN]: "1" }),
+      ),
     ).toContain("Only vp run stage sets it");
   });
 });
 
+/** Runs `effect` with only `env` of the run variables set, and `argv` as the process's. */
+const withRun = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  env: Record<string, string>,
+  argv: ReadonlyArray<string>,
+) =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const saved = { env: { ...process.env }, argv: process.argv };
+      for (const name of [
+        "WORKERS_CI",
+        "WORKERS_CI_BRANCH",
+        STAGE_RUN,
+        ...Object.keys(Fields.fields),
+      ])
+        delete process.env[name];
+      Object.assign(process.env, env);
+      process.argv = ["node", "cli.js", ...argv];
+      return saved;
+    }),
+    () => Effect.exit(effect),
+    (saved) =>
+      Effect.sync(() => {
+        process.env = saved.env;
+        process.argv = saved.argv;
+      }),
+  );
+
+const defect = (exit: Exit.Exit<unknown, unknown>) =>
+  Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+
 describe("guardDeployedRun", () => {
-  const guard = (stage: string, env: Record<string, string>) => {
-    const saved = { ...process.env };
-    for (const name of [
-      "WORKERS_CI",
-      "WORKERS_CI_BRANCH",
-      STAGE_RUN,
-      ...Object.keys(Fields.fields),
-    ])
-      delete process.env[name];
-    Object.assign(process.env, env);
-    return guardDeployedRun(Fields).pipe(
-      Effect.provideService(Alchemy.Stage, stage),
-      Effect.exit,
-      Effect.ensuring(
-        Effect.sync(() => {
-          process.env = saved;
-        }),
-      ),
+  const guard = (stage: string, env: Record<string, string>) =>
+    withRun(
+      guardDeployedRun.pipe(Effect.provideService(Alchemy.Stage, stage)),
+      env,
+      ["destroy", "--stage", stage, "--yes"],
     );
-  };
-  const defect = (exit: Exit.Exit<void>) =>
-    Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
 
   it.effect(
-    "dies on a hand-run deployed stage and passes a per-developer one",
+    "refuses a hand-run destroy of production, whatever reason the shell names",
     () =>
       Effect.gen(function* () {
-        assert.instanceOf(
-          defect(yield* guard("production", {})),
-          DeployedRunRefusedError,
-        );
-        assert.isTrue(Exit.isSuccess(yield* guard("dev-mw", {})));
+        const envs: ReadonlyArray<Record<string, string>> = [
+          {},
+          { [STAGE_RUN]: "bootstrap" },
+          { [STAGE_RUN]: "reset" },
+        ];
+        for (const env of envs)
+          assert.instanceOf(
+            defect(yield* guard("production", env)),
+            DeployedRunRefusedError,
+          );
       }),
   );
 
   it.effect(
-    "passes Workers Builds, then refuses a shell that sets a record field",
+    "lets reset destroy staging, and any command run on a per-developer stage",
     () =>
       Effect.gen(function* () {
-        const builds = { WORKERS_CI: "1", WORKERS_CI_BRANCH: "main" };
-        assert.isTrue(Exit.isSuccess(yield* guard("staging", builds)));
+        assert.isTrue(
+          Exit.isSuccess(yield* guard("staging", { [STAGE_RUN]: "reset" })),
+        );
+        assert.isTrue(Exit.isSuccess(yield* guard("dev-mw", {})));
+      }),
+  );
+});
+
+describe("guardShell", () => {
+  const guard = (stage: string, env: Record<string, string>) =>
+    withRun(
+      guardShell(Fields).pipe(Effect.provideService(Alchemy.Stage, stage)),
+      env,
+      ["deploy", "--stage", stage],
+    );
+
+  it.effect(
+    "refuses a deployed stage whose shell sets a record field, and ignores a per-developer one",
+    () =>
+      Effect.gen(function* () {
+        assert.isTrue(Exit.isSuccess(yield* guard("staging", {})));
         assert.instanceOf(
-          defect(yield* guard("staging", { ...builds, API_KEY: "x" })),
+          defect(yield* guard("staging", { API_KEY: "x" })),
           ShellHoldsStageConfigError,
         );
+        assert.isTrue(Exit.isSuccess(yield* guard("dev-mw", { API_KEY: "x" })));
       }),
   );
 });

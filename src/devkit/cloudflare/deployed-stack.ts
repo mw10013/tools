@@ -8,10 +8,12 @@
  * {@link decodeStageConfig}, so a missing record or field fails the plan. Workers Builds deploys
  * from that record and never sees the file.
  *
- * The app stack opens with {@link guardDeployedRun}, so Alchemy runs it on a deployed stage only
- * in Workers Builds on the stage's branch or under the `stage` CLI: a hand-run
- * `alchemy deploy --stage production` dies, and so does a hand-run `alchemy plan`, which
- * `vp run stage check` replaces.
+ * {@link stageState} admits a run on a deployed stage only from Workers Builds on the stage's
+ * branch or from the `stage` CLI, and only the Alchemy command that run is for
+ * ({@link deployedRunRefusal}). Alchemy builds the state store on every command that addresses a
+ * stage, `destroy` included, which never runs the stack's program; so a hand-run
+ * `alchemy deploy`, `plan` or `destroy --stage production` dies before it reads state. The app
+ * stack also opens with {@link guardShell}.
  *
  * Stack-time only: imports Alchemy, so no Worker bundle may carry it. {@link Deployed} and the
  * other names a bundle needs stay in `stage.ts`.
@@ -36,6 +38,7 @@ import {
   branchOf,
   Deployed,
   environmentOf,
+  ResettableDeployed,
   STAGE_RUN,
   StageRun,
 } from "#devkit/cloudflare/stage.ts";
@@ -46,13 +49,15 @@ const isDeployed = Schema.is(Deployed);
 /**
  * The stack's state store, chosen by the stage's environment. State lives where the resources
  * live: `dev`, `test` and `e2e` run in workerd and its simulators, so their state is local under
- * `.alchemy/`; `staging` and `production` run in Cloudflare, so their state does too.
+ * `.alchemy/`; `staging` and `production` run in Cloudflare, so their state does too, behind
+ * {@link guardDeployedRun}.
  *
  * `Test.make`'s own `state` option is built outside the stage, so integ files pass none and use
  * this layer from the stack.
  */
 export const stageState = Layer.unwrap(
   Effect.gen(function* () {
+    yield* guardDeployedRun;
     const environment = yield* environmentOf(yield* Alchemy.Stage);
     return Match.value(environment).pipe(
       Match.whenOr("dev", "test", "e2e", () => Alchemy.localState()),
@@ -168,7 +173,7 @@ export class StageConfigRecordError extends Schema.TaggedError<StageConfigRecord
   { fields: Schema.Array(Schema.String) },
 ) {
   override get message() {
-    return `the stage config record is missing or has invalid values for: ${this.fields.join(", ")}. Add them to .env.<stage>, run vp run stage-config --stage <stage>, then deploy again`;
+    return `the stage config record is missing or has invalid values for: ${this.fields.join(", ")}. Add them to .env.<stage>, run vp run stage config <stage>, then deploy again`;
   }
 }
 
@@ -225,34 +230,104 @@ export interface DeployedRunEnv {
   readonly [STAGE_RUN]?: string | undefined;
 }
 
-const isStageRun = Schema.is(StageRun);
+/** Alchemy's CLI commands, as its `src/Cli/main.ts` lists them. */
+const AlchemyCommand = Schema.Literals([
+  "provider",
+  "deploy",
+  "dev",
+  "destroy",
+  "plan",
+  "logs",
+  "profile",
+  "state",
+  "drift",
+  "unsafe",
+]);
+export type AlchemyCommand = typeof AlchemyCommand.Type;
 
 /**
- * Why Alchemy must not run the app stack on `stage` here, or `None`. It runs in Workers Builds on
- * the stage's branch, or under the `stage` CLI, which names why in {@link STAGE_RUN}. Anywhere
- * else a deploy would ship whatever the checkout holds, not what the branch holds. Alchemy gives
- * the stack no way to tell a plan from a deploy, so a hand-run plan is refused too.
+ * The command Alchemy's CLI runs for `argv`, `undefined` outside its CLI. Alchemy picks it the
+ * same way, as the first argument naming a command, so the two cannot disagree.
+ *
+ * @see `requestedCommand` in Alchemy's `src/Cli/main.ts`
+ */
+export const alchemyCommandOf = (
+  argv: ReadonlyArray<string>,
+): AlchemyCommand | undefined => argv.slice(2).find(Schema.is(AlchemyCommand));
+
+/** Who runs Alchemy on a deployed stage: Workers Builds, or the `stage` CLI for one of its reasons. */
+type DeployedRun = "builds" | StageRun;
+
+/**
+ * What each run may do. Builds only deploys; each `stage` subcommand runs the one command it is
+ * for. Only `reset` destroys, and only a {@link ResettableDeployed} stage, so nothing destroys
+ * production.
+ */
+const permits: Record<
+  DeployedRun,
+  {
+    readonly commands: ReadonlyArray<AlchemyCommand>;
+    readonly stages: ReadonlyArray<Deployed>;
+  }
+> = {
+  builds: { commands: ["deploy"], stages: Deployed.literals },
+  bootstrap: { commands: ["deploy"], stages: Deployed.literals },
+  config: { commands: ["deploy"], stages: Deployed.literals },
+  check: { commands: ["plan"], stages: Deployed.literals },
+  reset: {
+    commands: ["destroy", "deploy"],
+    stages: ResettableDeployed.literals,
+  },
+};
+
+const isStageRun = Schema.is(StageRun);
+
+const ONLY_RESET_DESTROYS =
+  "only vp run stage reset staging destroys a deployed stage, and nothing destroys production";
+
+/**
+ * Why Alchemy must not run `command` on `stage` here, or `None`. Workers Builds deploys the stage
+ * from its branch; the `stage` CLI names its reason in {@link STAGE_RUN}; each may run only what
+ * {@link permits} gives it. Anywhere else a deploy would ship whatever the checkout holds, not
+ * what the branch holds, and a destroy would delete the stage's data.
  */
 export const deployedRunRefusal = (
   stage: Deployed,
+  command: AlchemyCommand | undefined,
   env: DeployedRunEnv,
 ): Option.Option<string> => {
   const branch = branchOf(stage);
-  const run = env[STAGE_RUN];
-  if (run !== undefined)
-    return isStageRun(run)
-      ? Option.none()
-      : Option.some(
-          `${STAGE_RUN} is "${run}", not one of ${StageRun.literals.join(", ")}. Only vp run stage sets it; unset it`,
-        );
-  if (env.WORKERS_CI === "1")
-    return env.WORKERS_CI_BRANCH === branch
-      ? Option.none()
-      : Option.some(
-          `${stage} deploys from branch ${branch}, not ${env.WORKERS_CI_BRANCH ?? "(none)"}. Point the trigger at ${branch} with vp run stage trigger ${stage}`,
-        );
+  const reason = env[STAGE_RUN];
+  if (reason !== undefined && !isStageRun(reason))
+    return Option.some(
+      `${STAGE_RUN} is "${reason}", not one of ${StageRun.literals.join(", ")}. Only vp run stage sets it; unset it`,
+    );
+  if (
+    reason === undefined &&
+    env.WORKERS_CI === "1" &&
+    env.WORKERS_CI_BRANCH !== branch
+  )
+    return Option.some(
+      `${stage} deploys from branch ${branch}, not ${env.WORKERS_CI_BRANCH ?? "(none)"}. Point the trigger at ${branch} with vp run stage trigger ${stage}`,
+    );
+  const run: DeployedRun | undefined =
+    reason ?? (env.WORKERS_CI === "1" ? "builds" : undefined);
+  if (run === undefined)
+    return Option.some(
+      command === "destroy"
+        ? `${stage} is not destroyed by hand: ${ONLY_RESET_DESTROYS}`
+        : `${stage} runs only in Workers Builds: push to ${branch} to deploy it. Plan it with vp run stage check ${stage}; the owner deploys a stage with no trigger yet with vp run stage bootstrap ${stage}`,
+    );
+  const permit = permits[run];
+  if (
+    command !== undefined &&
+    permit.commands.includes(command) &&
+    permit.stages.includes(stage)
+  )
+    return Option.none();
+  const who = run === "builds" ? "Workers Builds" : `vp run stage ${run}`;
   return Option.some(
-    `${stage} runs only in Workers Builds: push to ${branch} to deploy it. Plan it with vp run stage check ${stage}; the owner deploys a stage with no trigger yet with vp run stage bootstrap ${stage}`,
+    `${who} runs alchemy ${permit.commands.join(" or ")} on ${permit.stages.join(" or ")}, not alchemy ${command ?? "(no command)"} on ${stage}${command === "destroy" ? `: ${ONLY_RESET_DESTROYS}` : ""}`,
   );
 };
 
@@ -265,6 +340,23 @@ export class DeployedRunRefusedError extends Schema.TaggedError<DeployedRunRefus
   }
 }
 
+/**
+ * Dies on a {@link Deployed} stage unless {@link deployedRunRefusal} allows this process's Alchemy
+ * command. {@link stageState} runs it as it builds; a stack with another store runs it the same way.
+ */
+export const guardDeployedRun: Effect.Effect<void, never, Alchemy.Stage> =
+  Effect.flatMap(Alchemy.Stage, (stage) => {
+    if (!isDeployed(stage)) return Effect.void;
+    const refusal = deployedRunRefusal(
+      stage,
+      alchemyCommandOf(process.argv),
+      process.env,
+    );
+    return Option.isSome(refusal)
+      ? Effect.die(new DeployedRunRefusedError({ reason: refusal.value }))
+      : Effect.void;
+  });
+
 export class ShellHoldsStageConfigError extends Schema.TaggedError<ShellHoldsStageConfigError>()(
   "ShellHoldsStageConfigError",
   { names: Schema.Array(Schema.String) },
@@ -276,28 +368,23 @@ export class ShellHoldsStageConfigError extends Schema.TaggedError<ShellHoldsSta
 
 /**
  * The app stack's first step; the stage config writer never calls it. On a {@link Deployed} stage
- * it dies unless the run is one {@link deployedRunRefusal} allows, and when the shell sets any of
- * the record's field names: a deployed stage's configuration is the shell alone
- * ({@link deployedSecrets}), and Alchemy binds what a Worker's init reads from it as a secret, so
- * such a variable would reach the Worker beside the record. Names only: values are never read.
+ * it dies when the shell sets any of the record's field names: a deployed stage's configuration is
+ * the shell alone ({@link deployedSecrets}), and Alchemy binds what a Worker's init reads from it
+ * as a secret, so such a variable would reach the Worker beside the record. Names only: values
+ * are never read.
  *
  * @example
  * export default Alchemy.Stack("app", { providers, state: stageState, secrets: deployedSecrets },
  *   Effect.gen(function* () {
- *     yield* guardDeployedRun(StageConfigFields);
+ *     yield* guardShell(StageConfigFields);
  *     // ...
  *   }),
  * );
  */
-export const guardDeployedRun = (schema: StageConfigSchema) =>
+export const guardShell = (schema: StageConfigSchema) =>
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
     if (!isDeployed(stage)) return;
-    const refusal = deployedRunRefusal(stage, process.env);
-    if (Option.isSome(refusal))
-      return yield* Effect.die(
-        new DeployedRunRefusedError({ reason: refusal.value }),
-      );
     const names = shellOverrides(schema, process.env);
     if (names.length > 0)
       return yield* Effect.die(new ShellHoldsStageConfigError({ names }));

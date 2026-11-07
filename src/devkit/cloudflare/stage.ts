@@ -31,11 +31,16 @@ export const branchOf = (stage: Deployed): "main" | "production" =>
 
 /**
  * The variable the `stage` CLI sets on the Alchemy runs it starts on a {@link Deployed} stage
- * outside Workers Builds, naming why, so the app stack lets them through.
+ * outside Workers Builds, naming why, so the stage's state store lets them through.
  */
 export const STAGE_RUN = "DEVKIT_STAGE_RUN";
 
-export const StageRun = Schema.Literals(["bootstrap", "reset", "check"]);
+export const StageRun = Schema.Literals([
+  "bootstrap",
+  "config",
+  "reset",
+  "check",
+]);
 export type StageRun = typeof StageRun.Type;
 
 /** Only disposable deployed data may be destroyed by the reset command. */

@@ -1,20 +1,22 @@
 #!/usr/bin/env vpx
 /**
  * `vp run stage <command> <stage>`: a {@link Deployed} stage's Workers Builds trigger, its health,
- * and the laptop runs of Alchemy on it. An app runs this file directly:
+ * its stage config record, and the laptop runs of Alchemy on it. An app runs this file directly:
  * `"stage": "vpx vendor/devkit/cloudflare/deployed-stage.ts"`.
  *
  * Workers Builds deploys a stage with the app's `deploy:<stage>` script, plain
- * `alchemy deploy --stage <stage> --yes`. The app stack's `guardDeployedRun` refuses any other
+ * `alchemy deploy --stage <stage> --yes`. The stage's state store (`stageState`) refuses any other
  * Alchemy run on the stage unless {@link STAGE_RUN} names why, which only this CLI sets, on the
- * Alchemy runs it starts:
+ * Alchemy runs it starts, and then only the command that reason is for:
  *
  * - `check` reads, and changes nothing: the plan, so a missing or invalid stage config record
  *   shows; whether the plan replaces the Website Worker, which takes its trigger with it; and the
  *   trigger against the canonical one.
+ * - `config` writes the stage config record from `.env.<stage>`, deploying {@link STAGE_CONFIG_STACK}.
  * - `trigger` makes the stage's trigger the {@link canonicalTrigger}. It runs from a laptop: the
  *   Builds API takes only a user API token.
- * - `reset` (staging only) destroys the stage, deploys it again and recreates its trigger.
+ * - `reset` (staging only) destroys the stage, deploys it again and recreates its trigger. It is
+ *   the only destroy of a deployed stage.
  * - `bootstrap` is the owner's deploy of a stage whose Website has no trigger yet.
  *
  * @see `~/.claude/skills/coder/references/deployed-stages.md`
@@ -57,6 +59,9 @@ class StageError extends Schema.TaggedError<StageError>()("StageError", {
  * routes and custom domains).
  */
 export const SHARED_BUILD_TOKEN = "Workers Builds - 2026-05-31 17:29";
+
+/** The app's stage config writer stack, relative to its root. */
+export const STAGE_CONFIG_STACK = "stacks/stage-config.ts";
 
 const websiteOf = (stage: Deployed) => workerNameOf(APP_NAME, stage, "website");
 
@@ -577,6 +582,19 @@ const bootstrap = Effect.fn("DeployedStage.bootstrap")(function* (
   yield* alchemy(["deploy", "--stage", stage, "--yes"], "bootstrap");
 });
 
+/** Saves `.env.<stage>` as the stage's config record; a deploy reads the record, never the file. */
+export const writeStageConfig = Effect.fn("DeployedStage.writeStageConfig")(
+  function* (stage: Deployed) {
+    yield* alchemy(
+      ["deploy", "--config", STAGE_CONFIG_STACK, "--stage", stage, "--yes"],
+      "config",
+    );
+    yield* Console.log(
+      `${stage}: wrote the stage config record from .env.${stage}; deploy to use it`,
+    );
+  },
+);
+
 const toUserError = (error: StageError) =>
   new CliError.UserError({ cause: error, userMessage: error.message });
 
@@ -637,6 +655,16 @@ const resetCommand = Command.make(
   ),
 );
 
+const configCommand = Command.make(
+  "config",
+  { stage: stageArgument },
+  ({ stage }) => writeStageConfig(stage).pipe(Effect.mapError(toUserError)),
+).pipe(
+  Command.withDescription(
+    "Write the stage config record from .env.<stage>, the record's only source.",
+  ),
+);
+
 const bootstrapCommand = Command.make(
   "bootstrap",
   { stage: stageArgument },
@@ -651,10 +679,11 @@ const bootstrapCommand = Command.make(
 if (import.meta.main) {
   Command.make("stage").pipe(
     Command.withDescription(
-      "Check, trigger, reset and bootstrap staging and production.",
+      "Check, configure, trigger, reset and bootstrap staging and production.",
     ),
     Command.withSubcommands([
       checkCommand,
+      configCommand,
       triggerCommand,
       resetCommand,
       bootstrapCommand,
