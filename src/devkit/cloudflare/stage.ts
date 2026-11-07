@@ -25,6 +25,19 @@ export type PerDeveloper = typeof PerDeveloper.Type;
 export const Deployed = Schema.Literals(["staging", "production"]);
 export type Deployed = typeof Deployed.Type;
 
+/** The branch whose pushes deploy the stage. Production moves only by fast-forward from `main`. */
+export const branchOf = (stage: Deployed): "main" | "production" =>
+  stage === "staging" ? "main" : "production";
+
+/**
+ * The variable the `stage` CLI sets on the Alchemy runs it starts on a {@link Deployed} stage
+ * outside Workers Builds, naming why, so the app stack lets them through.
+ */
+export const STAGE_RUN = "DEVKIT_STAGE_RUN";
+
+export const StageRun = Schema.Literals(["bootstrap", "reset", "check"]);
+export type StageRun = typeof StageRun.Type;
+
 /** Only disposable deployed data may be destroyed by the reset command. */
 export const ResettableDeployed = Schema.Literals(["staging"]);
 export type ResettableDeployed = typeof ResettableDeployed.Type;

@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { NodeServices } from "@effect/platform-node";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, describe, expect, it } from "@effect/vitest";
 import * as Alchemy from "alchemy";
 import * as Output from "alchemy/Output";
 import {
@@ -12,15 +12,23 @@ import {
   reviveStateRecursive,
   State,
 } from "alchemy/State";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+
+import { STAGE_RUN } from "#devkit/cloudflare/stage.ts";
 
 import {
   decodeRecord,
   decodeStageConfig,
+  deployedRunRefusal,
+  DeployedRunRefusedError,
+  guardDeployedRun,
   parseStageFile,
+  ShellHoldsStageConfigError,
   shellOverrides,
   StageConfigRecordError,
 } from "./deployed-stack.ts";
@@ -176,4 +184,99 @@ describe("shellOverrides", () => {
       ["API_SECRET", "RETRIES"],
     );
   });
+});
+
+describe("deployedRunRefusal", () => {
+  it("allows Workers Builds on the stage's branch", () => {
+    expect(
+      deployedRunRefusal("staging", {
+        WORKERS_CI: "1",
+        WORKERS_CI_BRANCH: "main",
+      }),
+    ).toStrictEqual(Option.none());
+    expect(
+      deployedRunRefusal("production", {
+        WORKERS_CI: "1",
+        WORKERS_CI_BRANCH: "production",
+      }),
+    ).toStrictEqual(Option.none());
+  });
+
+  it("refuses a build of another branch", () => {
+    expect(
+      Option.getOrThrow(
+        deployedRunRefusal("production", {
+          WORKERS_CI: "1",
+          WORKERS_CI_BRANCH: "main",
+        }),
+      ),
+    ).toContain("deploys from branch production, not main");
+  });
+
+  it("refuses a hand-run alchemy on a laptop, naming the commands to use", () => {
+    const refusal = Option.getOrThrow(deployedRunRefusal("production", {}));
+    expect(refusal).toContain("push to production");
+    expect(refusal).toContain("vp run stage check production");
+    expect(refusal).toContain("vp run stage bootstrap production");
+  });
+
+  it("allows the stage CLI's runs, and only the reasons it sets", () => {
+    for (const run of ["bootstrap", "reset", "check"])
+      expect(deployedRunRefusal("staging", { [STAGE_RUN]: run })).toStrictEqual(
+        Option.none(),
+      );
+    expect(
+      Option.getOrThrow(deployedRunRefusal("staging", { [STAGE_RUN]: "1" })),
+    ).toContain("Only vp run stage sets it");
+  });
+});
+
+describe("guardDeployedRun", () => {
+  const guard = (stage: string, env: Record<string, string>) => {
+    const saved = { ...process.env };
+    for (const name of [
+      "WORKERS_CI",
+      "WORKERS_CI_BRANCH",
+      STAGE_RUN,
+      ...Object.keys(Fields.fields),
+    ])
+      delete process.env[name];
+    Object.assign(process.env, env);
+    return guardDeployedRun(Fields).pipe(
+      Effect.provideService(Alchemy.Stage, stage),
+      Effect.exit,
+      Effect.ensuring(
+        Effect.sync(() => {
+          process.env = saved;
+        }),
+      ),
+    );
+  };
+  const defect = (exit: Exit.Exit<void>) =>
+    Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+
+  it.effect(
+    "dies on a hand-run deployed stage and passes a per-developer one",
+    () =>
+      Effect.gen(function* () {
+        assert.instanceOf(
+          defect(yield* guard("production", {})),
+          DeployedRunRefusedError,
+        );
+        assert.isTrue(Exit.isSuccess(yield* guard("dev-mw", {})));
+      }),
+  );
+
+  it.effect(
+    "passes Workers Builds, then refuses a shell that sets a record field",
+    () =>
+      Effect.gen(function* () {
+        const builds = { WORKERS_CI: "1", WORKERS_CI_BRANCH: "main" };
+        assert.isTrue(Exit.isSuccess(yield* guard("staging", builds)));
+        assert.instanceOf(
+          defect(yield* guard("staging", { ...builds, API_KEY: "x" })),
+          ShellHoldsStageConfigError,
+        );
+      }),
+  );
 });
