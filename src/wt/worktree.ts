@@ -23,6 +23,7 @@ import * as Git from "./git.ts";
 import { firstFree, fromWords, NAME_MAX, type WorktreeName } from "./name.ts";
 import { run, stream } from "./process.ts";
 import { share } from "./share.ts";
+import * as Teardown from "./teardown.ts";
 
 export class InvalidNameError extends Schema.TaggedError<InvalidNameError>()(
   "InvalidNameError",
@@ -83,34 +84,6 @@ const worktreesRoot = Effect.gen(function* () {
   return process.env.WT_ROOT ?? path.join(os.homedir(), ".t3", "worktrees");
 });
 
-const PackageScripts = Schema.fromJsonString(
-  Schema.Struct({
-    scripts: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-  }),
-);
-
-const packageScripts = Effect.fn("Worktree.packageScripts")(function* (
-  directory: string,
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(directory, "package.json");
-  if (!(yield* fs.exists(file))) return Option.none<ReadonlySet<string>>();
-  const text = yield* fs.readFileString(file);
-  return Option.some<ReadonlySet<string>>(
-    new Set(
-      Object.keys(
-        Option.getOrElse(
-          Schema.decodeUnknownOption(PackageScripts)(text),
-          () => ({
-            scripts: undefined,
-          }),
-        ).scripts ?? {},
-      ),
-    ),
-  );
-});
-
 export interface Created {
   readonly path: string;
   readonly branch: WorktreeName;
@@ -167,22 +140,11 @@ export const create = Effect.fn("Worktree.create")(function* (
   const steps: string[] = ["git worktree add"];
   yield* share(worktree, repository.root);
   steps.push("share");
-  const scripts = yield* packageScripts(worktree);
-  if (Option.isSome(scripts)) {
+  if (yield* fs.exists(path.join(worktree, "package.json"))) {
     yield* stream(worktree, "vp", ["install", "--frozen-lockfile"]);
     steps.push("vp install");
   }
-  steps.push(...(yield* initHook(worktree, scripts)));
   return { path: worktree, branch, base, steps } satisfies Created;
-});
-
-const initHook = Effect.fn("Worktree.initHook")(function* (
-  worktree: string,
-  scripts: Option.Option<ReadonlySet<string>>,
-) {
-  if (!Option.exists(scripts, (names) => names.has("worktree:init"))) return [];
-  yield* stream(worktree, "vp", ["run", "worktree:init"]);
-  return ["vp run worktree:init"];
 });
 
 export interface Initialized {
@@ -203,11 +165,7 @@ export const init = Effect.fn("Worktree.init")(function* (
   if (worktree.main)
     return yield* new MainCheckoutError({ path: worktree.path });
   yield* share(worktree.path, repository.root);
-  const steps = [
-    "share",
-    ...(yield* initHook(worktree.path, yield* packageScripts(worktree.path))),
-  ];
-  return { path: worktree.path, steps } satisfies Initialized;
+  return { path: worktree.path, steps: ["share"] } satisfies Initialized;
 });
 
 const find = Effect.fn("Worktree.find")(function* (
@@ -252,8 +210,6 @@ export const remove = Effect.fn("Worktree.remove")(function* (
   target: Option.Option<string>,
   options: { readonly force: boolean },
 ) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const repository = yield* Git.repositoryOf(directory);
   const worktree = yield* find(
     repository,
@@ -285,16 +241,10 @@ export const remove = Effect.fn("Worktree.remove")(function* (
         commits: ahead,
       });
   }
-  const steps: string[] = [];
-  const scripts = yield* packageScripts(worktree.path);
-  if (Option.exists(scripts, (names) => names.has("worktree:teardown"))) {
-    yield* stream(worktree.path, "vp", ["run", "worktree:teardown"]);
-    steps.push("vp run worktree:teardown");
-  }
-  if (yield* fs.exists(path.join(worktree.path, "berth.json"))) {
-    yield* stream(worktree.path, "berth", ["release"]);
-    steps.push("berth release");
-  }
+  const steps = yield* Teardown.run(
+    yield* Teardown.discover(worktree.path),
+    worktree.path,
+  );
   // What is still running inside the worktree with no owner, a leaked workerd for one, would
   // keep working in a directory that no longer exists.
   const orphans = yield* Effect.sync(() => orphansIn(worktree.path));

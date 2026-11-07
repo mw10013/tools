@@ -163,6 +163,74 @@ describe("wt rm", () => {
     expect(failureTag(await remove(repo))).toBe("MainCheckoutError");
   });
 
+  describe("teardown", () => {
+    let calls: string;
+    let savedPath: string | undefined;
+
+    const fake = (program: string, exitCode: number) => {
+      const bin = path.join(scratch, "bin");
+      fs.mkdirSync(bin, { recursive: true });
+      const file = path.join(bin, program);
+      fs.writeFileSync(
+        file,
+        `#!/bin/sh\necho "${program} $* in $(pwd -P)" >> "${calls}"\nexit ${String(exitCode)}\n`,
+      );
+      fs.chmodSync(file, 0o755);
+    };
+
+    const appWithServer = async (name: string) => {
+      fs.mkdirSync(path.join(repo, "apps", "x"), { recursive: true });
+      fs.writeFileSync(path.join(repo, "apps", "x", "berth.json"), "{}\n");
+      git(repo, "add", ".");
+      git(repo, "commit", "--quiet", "-m", "app");
+      git(repo, "push", "--quiet", "origin", "main");
+      const exit = await create([name]);
+      const worktree = Exit.isSuccess(exit) ? exit.value.path : "";
+      const bosun = path.join(worktree, "apps", "x", ".bosun");
+      fs.mkdirSync(path.join(bosun, "dev"), { recursive: true });
+      fs.writeFileSync(path.join(bosun, ".gitignore"), "*\n");
+      fs.writeFileSync(path.join(bosun, "dev", "record.json"), "{}\n");
+      return worktree;
+    };
+
+    beforeEach(() => {
+      calls = path.join(scratch, "calls.log");
+      savedPath = process.env.PATH;
+      process.env.PATH = `${path.join(scratch, "bin")}:${savedPath ?? ""}`;
+    });
+
+    afterEach(() => {
+      process.env.PATH = savedPath;
+    });
+
+    it("stops a nested app's server and releases its leases from the app's folder, then removes", async () => {
+      fake("bosun", 0);
+      fake("berth", 0);
+      const worktree = await appWithServer("teardown");
+      const removed = await remove("teardown");
+      expect(Exit.isSuccess(removed) && removed.value.steps).toStrictEqual([
+        "bosun stop dev in apps/x",
+        "berth release in apps/x",
+        "git worktree remove",
+        "git branch -D",
+      ]);
+      const app = path.join(worktree, "apps", "x");
+      expect(fs.readFileSync(calls, "utf8")).toBe(
+        `bosun stop dev in ${app}\nberth release in ${app}\n`,
+      );
+      expect(fs.existsSync(worktree)).toBe(false);
+    }, 30_000);
+
+    it("keeps the worktree and branch when a teardown step fails", async () => {
+      fake("bosun", 0);
+      fake("berth", 1);
+      const worktree = await appWithServer("held");
+      expect(failureTag(await remove("held"))).toBe("CommandFailedError");
+      expect(fs.existsSync(worktree)).toBe(true);
+      expect(git(repo, "branch", "--list", "held")).not.toBe("");
+    }, 30_000);
+  });
+
   it("finds the worktree a path inside it names", async () => {
     const exit = await create(["nested"]);
     const worktree = Exit.isSuccess(exit) ? exit.value.path : "";
@@ -235,6 +303,21 @@ describe("wt init", () => {
     expect(
       failureTag(await runEffect(Worktree.init(worktree, Option.none()))),
     ).toBe("SharedPathError");
+  }, 30_000);
+
+  it("only shares, running no package script", async () => {
+    const exit = await create(["scripted"]);
+    const worktree = Exit.isSuccess(exit) ? exit.value.path : "";
+    const marker = path.join(scratch, "ran");
+    fs.writeFileSync(
+      path.join(worktree, "package.json"),
+      JSON.stringify({ scripts: { "worktree:init": `touch ${marker}` } }),
+    );
+    const initialized = await runEffect(Worktree.init(worktree, Option.none()));
+    expect(
+      Exit.isSuccess(initialized) && initialized.value.steps,
+    ).toStrictEqual(["share"]);
+    expect(fs.existsSync(marker)).toBe(false);
   }, 30_000);
 
   it("refuses the main checkout", async () => {

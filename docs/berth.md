@@ -136,8 +136,8 @@ Machine policy is `~/.config/berth/config.json`, and its one field is optional. 
 Consumers are separate repos. They run `berth` and decode the JSON with their own small schema naming only the fields they read. `berth` reaches PATH through a shim, `~/.local/bin/berth`, that runs `vpx ~/projects/tools/berth.ts`.
 
 - A Shopify app's dev server calls `berth acquire <env>` (devkit's `src/devkit/shopify/berth.ts`) and passes the store's handle to `--store` and `store.config` to `--config`.
-- `worktree:init` calls `berth acquire` for each env, so a full pool fails at init with `StorePoolExhaustedError`. Worktree removal calls `berth release` before `git worktree remove`.
-- A command that stops a server calls `berth show <env>`, not `acquire`: no lease means nothing of this checkout's runs on one, and a checkout whose `worktree:init` failed is not handed a lease on its way out.
+- A new worktree takes no lease: its first `acquire` comes from `vp run dev` or e2e. `wt rm` runs `berth release` in every folder of the worktree with a `berth.json`, after `bosun stop` for each of that worktree's servers, and before `git worktree remove`. With no lease held, `release` succeeds and releases nothing. A worktree removed some other way loses its leases at the next `acquire` or `release` on the machine (**Stale sweep**).
+- A command that stops a server calls `berth show <env>`, not `acquire`: no lease means nothing of this checkout's runs on one, and a checkout is not handed a lease on its way out.
 - Playwright configs call `berth acquire <env>` for the store their tests run against.
 
 CLI 5.0 refuses a second `shopify app dev` in one directory with the same config basename. A checkout that runs dev and e2e at once needs a second config file for e2e, which `store.config` names.
