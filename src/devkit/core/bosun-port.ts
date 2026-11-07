@@ -1,4 +1,3 @@
-#!/usr/bin/env vpx
 /**
  * Picks a free localhost port, publishes it to bosun as the server's endpoint and prints it, for
  * a server that takes its port as an argument and never reports the port it bound: `alchemy dev`
@@ -7,14 +6,12 @@
  *
  * The port is free when picked, not reserved. The server must bind it strictly, so a process that
  * takes it first fails the start instead of moving the server off the published port. An app
- * runs this file directly: `port=$(vpx vendor/devkit/core/bosun-port.ts)`.
+ * runs it as the `devkit-bosun-port` bin: `port=$(devkit-bosun-port)`.
  *
  * @module
  */
 import { createServer } from "node:net";
 
-import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as CliError from "effect/cli/CliError";
 import * as Command from "effect/cli/Command";
 import * as Config from "effect/Config";
@@ -65,16 +62,11 @@ export const publishFreePort = Effect.gen(function* () {
   return port;
 });
 
-// Only when run, so a test can import this module.
-if (import.meta.main) {
-  Command.make("bosun-port", {}, () =>
-    publishFreePort.pipe(Effect.flatMap(Console.log)),
-  ).pipe(
-    Command.withDescription(
-      "Publish a free localhost port to bosun and print it.",
-    ),
-    Command.run({ version: "1.0.0" }),
-    Effect.provide(NodeServices.layer),
-    NodeRuntime.runMain,
-  );
-}
+/** `devkit-bosun-port`: the bin's command, run by `bin/bosun-port.ts` through {@link runCli}. */
+export const command = Command.make("bosun-port", {}, () =>
+  publishFreePort.pipe(Effect.flatMap(Console.log)),
+).pipe(
+  Command.withDescription(
+    "Publish a free localhost port to bosun and print it.",
+  ),
+);

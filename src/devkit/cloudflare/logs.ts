@@ -1,14 +1,11 @@
-#!/usr/bin/env vpx
 /**
  * `vp run logs`: a {@link Deployed} stage's Worker logs from Workers
  * Observability, one line per event, for both of the app's Workers
- * ({@link workerNameOf}). An app runs this file directly:
- * `"logs": "vpx vendor/devkit/cloudflare/logs.ts"`.
+ * ({@link workerNameOf}). An app runs it as the
+ * `devkit-logs` bin: `"logs": "devkit-logs"`.
  *
  * @module
  */
-import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Argument from "effect/cli/Argument";
 import * as CliError from "effect/cli/CliError";
 import * as Command from "effect/cli/Command";
@@ -358,15 +355,10 @@ const wait = Command.make(
   ),
 );
 
-// Only when run, so a test can import this module.
-if (import.meta.main) {
-  Command.make("logs").pipe(
-    Command.withDescription(
-      "Read staging's or production's Worker logs (website and backend).",
-    ),
-    Command.withSubcommands([show, follow, wait]),
-    Command.run({ version: "1.0.0" }),
-    Effect.provide(NodeServices.layer),
-    NodeRuntime.runMain,
-  );
-}
+/** `devkit-logs`: the bin's command, run by `bin/logs.ts` through {@link runCli}. */
+export const command = Command.make("logs").pipe(
+  Command.withDescription(
+    "Read staging's or production's Worker logs (website and backend).",
+  ),
+  Command.withSubcommands([show, follow, wait]),
+);
