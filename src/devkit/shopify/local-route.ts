@@ -32,7 +32,7 @@ export const routeAppToLocal = async (
     async (route) => {
       const request = route.request();
       const url = new URL(request.url());
-      const response = await route
+      const fetched = await route
         .fetch({
           url: `${local}${url.pathname}${url.search}`,
           headers: {
@@ -44,10 +44,19 @@ export const routeAppToLocal = async (
           maxRedirects: 0,
           maxRetries: 1,
         })
+        .then(async (response) => ({
+          status: response.status(),
+          headers: response.headers(),
+          body: await response.body(),
+        }))
         .catch(() => undefined);
-      await (response === undefined
+      // The body is read here because `fulfill({ response })` sends Playwright a reference to it,
+      // which closing the context disposes: a request in flight as a spec's `afterAll` closes the
+      // context failed the test with "Fetch response has been disposed". `abort` and `fulfill`
+      // themselves are silenced once the page is closed.
+      await (fetched === undefined
         ? route.abort("connectionfailed")
-        : route.fulfill({ response }));
+        : route.fulfill(fetched));
     },
   );
 };
