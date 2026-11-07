@@ -1,6 +1,6 @@
 /**
  * What an app's Alchemy stacks share to keep a {@link Deployed} stage's configuration in one
- * place: the state store, the `secrets` policy, and the stage config record.
+ * place: the providers, the state store, the `secrets` policy, and the stage config record.
  *
  * A deployed stage's externally issued values (API keys, secrets, ids) live in one record, the
  * output of the app's stage config stack in Cloudflare state. Its writer reads them from
@@ -65,6 +65,32 @@ export const stageState = Layer.unwrap(
       Match.exhaustive,
     );
   }),
+);
+
+export class UnsafeNukeRefusedError extends Schema.TaggedError<UnsafeNukeRefusedError>()(
+  "UnsafeNukeRefusedError",
+  {},
+) {
+  override get message() {
+    return "alchemy unsafe nuke deletes every Alchemy resource the account holds, every app's staging and production included, so an app stack refuses it. Reset local data with vp run db:reset and staging with vp run stage reset staging";
+  }
+}
+
+/** Dies when this process is `alchemy unsafe nuke`. */
+export const refuseUnsafeNuke: Effect.Effect<void> = Effect.suspend(() =>
+  alchemyCommandOf(process.argv) === "unsafe"
+    ? Effect.die(new UnsafeNukeRefusedError())
+    : Effect.void,
+);
+
+/**
+ * The `providers` option of every app stack and its stage config writer: Cloudflare's, behind
+ * {@link refuseUnsafeNuke}. Nuke builds a stack's providers and nothing else, no stage and no
+ * state store (Alchemy's `src/Alchemist/Nuke.ts`), so {@link guardDeployedRun} never runs, and it
+ * deletes across the whole account, not one stage.
+ */
+export const stageProviders = Layer.unwrap(
+  Effect.as(refuseUnsafeNuke, Cloudflare.providers()),
 );
 
 /**
@@ -159,7 +185,7 @@ export const parseStageFile = <S extends StageConfigSchema>(
  *
  * @example
  * export default StageConfig.make(
- *   { providers: Cloudflare.providers(), state: stageState, secrets: deployedSecrets },
+ *   { providers: stageProviders, state: stageState, secrets: deployedSecrets },
  *   readStageFile(StageConfigFields),
  * );
  */

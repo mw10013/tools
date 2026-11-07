@@ -30,9 +30,11 @@ import {
   guardDeployedRun,
   guardShell,
   parseStageFile,
+  refuseUnsafeNuke,
   ShellHoldsStageConfigError,
   shellOverrides,
   StageConfigRecordError,
+  UnsafeNukeRefusedError,
 } from "./deployed-stack.ts";
 
 const Fields = Schema.Struct({
@@ -354,6 +356,34 @@ describe("guardDeployedRun", () => {
           Exit.isSuccess(yield* guard("staging", { [STAGE_RUN]: "reset" })),
         );
         assert.isTrue(Exit.isSuccess(yield* guard("dev-mw", {})));
+      }),
+  );
+});
+
+describe("refuseUnsafeNuke", () => {
+  it.effect(
+    "refuses alchemy unsafe nuke and lets every other command build",
+    () =>
+      Effect.gen(function* () {
+        assert.instanceOf(
+          defect(
+            yield* withRun(refuseUnsafeNuke, {}, [
+              "unsafe",
+              "nuke",
+              "alchemy.run.ts",
+              "--dry-run",
+            ]),
+          ),
+          UnsafeNukeRefusedError,
+        );
+        for (const argv of [
+          ["deploy", "--stage", "dev-mw"],
+          ["destroy", "--stage", "staging"],
+          [],
+        ])
+          assert.isTrue(
+            Exit.isSuccess(yield* withRun(refuseUnsafeNuke, {}, argv)),
+          );
       }),
   );
 });
