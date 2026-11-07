@@ -84,9 +84,8 @@ export const refuseUnsafeNuke: Effect.Effect<void> = Effect.suspend(() =>
  * state store (Alchemy's `src/Alchemist/Nuke.ts`), so {@link guardDeployedRun} never runs, and it
  * deletes across the whole account, not one stage.
  */
-export const stageProviders = Layer.unwrap(
-  Effect.as(refuseUnsafeNuke, Cloudflare.providers()),
-);
+export const stageProviders: ReturnType<typeof Cloudflare.providers> =
+  Layer.unwrap(Effect.as(refuseUnsafeNuke, Cloudflare.providers()));
 
 /**
  * The `secrets` option of every app stack. A per-developer stage reads `.env`, then the shell. A
