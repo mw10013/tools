@@ -14,6 +14,7 @@ import * as Option from "effect/Option";
 
 import * as Git from "#wt/git.ts";
 
+import * as DevkitBuild from "./build.ts";
 import * as Devkit from "./sync.ts";
 
 const TOOLS = path.resolve(import.meta.dirname, "../..");
@@ -110,9 +111,23 @@ const status = Command.make("status", {}, () =>
   ),
 );
 
+const build = Command.make("build", {}, () =>
+  run(
+    Effect.gen(function* () {
+      const built = yield* DevkitBuild.build();
+      yield* Console.error(`devkit: built the package into ${built.directory}`);
+      return built;
+    }),
+  ),
+).pipe(
+  Command.withShortDescription(
+    "Build src/devkit into the package @mw10013/devkit under dist/devkit/",
+  ),
+);
+
 export const command = Command.make("devkit").pipe(
   Command.withDescription(
     "Vendor devkit, the dev tooling shared by the apps, into this repository.",
   ),
-  Command.withSubcommands([sync, status]),
+  Command.withSubcommands([sync, status, build]),
 );
