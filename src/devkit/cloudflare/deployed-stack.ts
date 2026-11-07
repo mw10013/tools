@@ -136,8 +136,8 @@ type DeployedRun = "builds" | StageRun;
 
 /**
  * What each run may do. Builds only deploys; each `stage` subcommand runs the one command it is
- * for. Only `reset` destroys, and only a {@link ResettableDeployed} stage, so nothing destroys
- * production.
+ * for, `up` the stage's first deploy from a checkout at the stage's branch. Only `reset` destroys,
+ * and only a {@link ResettableDeployed} stage, so nothing destroys production.
  */
 const permits: Record<
   DeployedRun,
@@ -149,6 +149,7 @@ const permits: Record<
   builds: { commands: ["deploy"], stages: Deployed.literals },
   check: { commands: ["plan"], stages: Deployed.literals },
   reset: { commands: ["destroy"], stages: ResettableDeployed.literals },
+  up: { commands: ["deploy"], stages: Deployed.literals },
 };
 
 const isStageRun = Schema.is(StageRun);
@@ -160,7 +161,8 @@ const ONLY_RESET_DESTROYS =
  * Why Alchemy must not run `command` on `stage` here, or `None`. Workers Builds deploys the stage
  * from its branch; the `stage` CLI names its reason in {@link STAGE_RUN}; each may run only what
  * {@link permits} gives it. Anywhere else a deploy would ship whatever the checkout holds, not
- * what the branch holds, and a destroy would delete the stage's data.
+ * what the branch holds (`up` deploys only from a clean checkout at the branch), and a destroy
+ * would delete the stage's data.
  */
 export const deployedRunRefusal = (
   stage: Deployed,

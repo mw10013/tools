@@ -98,6 +98,8 @@ describe("deployedRunRefusal", () => {
     const allowed = [
       ["check", "plan", "production"],
       ["reset", "destroy", "staging"],
+      ["up", "deploy", "staging"],
+      ["up", "deploy", "production"],
     ] as const;
     for (const [run, command, stage] of allowed)
       expect(
@@ -108,6 +110,8 @@ describe("deployedRunRefusal", () => {
       ["check", "deploy", "staging"],
       ["check", "destroy", "staging"],
       ["reset", "plan", "staging"],
+      ["up", "plan", "production"],
+      ["up", "destroy", "staging"],
     ] as const;
     for (const [run, command, stage] of refused)
       expect(

@@ -409,7 +409,9 @@ production's Workers Builds deploys from a laptop:
 `"stage": "vpx vendor/devkit/cloudflare/deployed-stage.ts"`, run as
 `vp run stage <up|check|reset> <stage>` (`vp run stage --help`). `up` checks
 `.env.<stage>` against the fields the app declares in `stacks/stage-env.ts`,
-places a Website if the stage has none, makes its one trigger canonical, sets
+gives a stage with no Website its first deploy from the laptop (`alchemy deploy`
+with the file's values in its environment, only from a clean checkout whose
+`HEAD` is the stage's branch on `origin`), makes its one trigger canonical, sets
 the trigger's variables from the file (secrets as Builds secrets, through a
 temporary file, never on argv), deletes undeclared ones, and builds the
 stage's branch; `production` writes only with `--confirm production`. `check`

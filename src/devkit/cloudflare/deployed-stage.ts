@@ -11,7 +11,9 @@
  *
  * - `up` makes the stage match `.env.<stage>`: the Website exists, its one trigger is the
  *   {@link canonicalTrigger}, the trigger's variables are the file's, and a build of the branch
- *   ran with them. It runs from a laptop: the Builds API takes only a user API token.
+ *   ran with them. It runs from a laptop: the Builds API takes only a user API token. A stage
+ *   with no Website gets its first deploy from the laptop, since a trigger needs a Worker to
+ *   key to; every later deploy runs in Builds.
  * - `check` reads, and changes nothing: the plan, the trigger, its variables' names and the latest
  *   build.
  * - `reset` (staging only) destroys the stage, then runs `up`. It is the only destroy of a
@@ -34,14 +36,10 @@ import * as Argument from "effect/cli/Argument";
 import * as CliError from "effect/cli/CliError";
 import * as Command from "effect/cli/Command";
 import * as Flag from "effect/cli/Flag";
-import * as Config from "effect/Config";
 import * as Console from "effect/Console";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as FetchHttpClient from "effect/http/FetchHttpClient";
-import * as HttpClient from "effect/http/HttpClient";
-import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as Option from "effect/Option";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -78,9 +76,6 @@ export const SHARED_BUILD_TOKEN = "Workers Builds - 2026-05-31 17:29";
 
 /** The app's stage fields ({@link StageFields}), its default export, relative to its root. */
 export const STAGE_ENV_MODULE = "stacks/stage-env.ts";
-
-/** The Website's logical id in the app stack, which Alchemy tags its Worker with. */
-const WEBSITE_ID = "Website";
 
 const websiteOf = (stage: Deployed) => workerNameOf(APP_NAME, stage, "website");
 
@@ -424,17 +419,15 @@ const previewsEnabled = (tag: string) =>
     Effect.catchTag("CommandError", () => Effect.succeed(false)),
   );
 
+const git = (args: readonly string[]) =>
+  runCommand("git", ["-C", ROOT, ...args]).pipe(
+    Effect.map((output) => output.trim()),
+    Effect.mapError((error) => new StageError({ message: error.message })),
+  );
+
 /** The app's GitHub repository, from `origin`. */
 const githubRepo = Effect.fn("DeployedStage.githubRepo")(function* () {
-  const url = (yield* runCommand("git", [
-    "-C",
-    ROOT,
-    "remote",
-    "get-url",
-    "origin",
-  ]).pipe(
-    Effect.mapError((error) => new StageError({ message: error.message })),
-  )).trim();
+  const url = yield* git(["remote", "get-url", "origin"]);
   const match = /github\.com[:/](?<owner>[^/]+)\/(?<name>.+?)(?:\.git)?$/u.exec(
     url,
   );
@@ -669,85 +662,46 @@ const syncVariables = Effect.fn("DeployedStage.syncVariables")(function* (
   }
 }, Effect.scoped);
 
-/** The script a stage's Website holds until its first build replaces it. */
-const PLACEHOLDER = `export default { fetch: () => new Response("Not deployed yet", { status: 503 }) };\n`;
+/**
+ * Refuses unless the checkout is clean and its `HEAD` is the stage's branch on `origin`, fetched
+ * now, so a deploy from it ships exactly the commit a Builds deploy would.
+ */
+const requireBranchCheckout = Effect.fn("DeployedStage.requireBranchCheckout")(
+  function* (stage: Deployed) {
+    const branch = branchOf(stage);
+    if ((yield* git(["status", "--porcelain"])) !== "")
+      return yield* new StageError({
+        message: `the first deploy of ${stage} ships this checkout, which has uncommitted changes; commit or stash them, then rerun`,
+      });
+    yield* git(["fetch", "origin", branch]);
+    const head = yield* git(["rev-parse", "HEAD"]);
+    const remote = yield* git(["rev-parse", `origin/${branch}`]);
+    if (head !== remote)
+      return yield* new StageError({
+        message: `the first deploy of ${stage} ships this checkout, whose HEAD ${head} is not origin/${branch} ${remote}; run git switch ${branch} && git pull --ff-only, then rerun`,
+      });
+  },
+);
 
 /**
- * Uploads a placeholder Website carrying the tags Alchemy marks its own Workers with, so the
- * stage's first build adopts it in place and its tag, and the trigger keyed to the tag, survive.
- * `cf` has no command that sets a Worker's tags, so this one request goes to the API directly with
- * the laptop's credentials. It carries no secret.
- *
- * @see `hasAlchemyWorkerTags` in Alchemy's `packages/cloudflare/src/Workers/WorkerProvider.ts`
+ * The Website's tag. A stage with none gets its first deploy here, since a trigger needs the
+ * Worker it is keyed to: Alchemy from this checkout, once {@link requireBranchCheckout} passes,
+ * with the file's values in its environment as Builds passes them.
  */
-const placeWebsite = Effect.fn("DeployedStage.placeWebsite")(function* (
-  stage: Deployed,
-) {
-  const [account, token] = yield* Effect.all([
-    Config.NonEmptyString("CLOUDFLARE_ACCOUNT_ID"),
-    Config.Redacted("CLOUDFLARE_API_TOKEN"),
-  ]).pipe(
-    Effect.mapError(
-      () =>
-        new StageError({
-          message:
-            "placing the Website needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in the shell",
-        }),
-    ),
-  );
-  const form = new FormData();
-  form.append(
-    "metadata",
-    new Blob(
-      [
-        JSON.stringify({
-          main_module: "placeholder.js",
-          compatibility_date: "2026-01-01",
-          tags: [
-            `alchemy:stack:${APP_NAME}`,
-            `alchemy:stage:${stage}`,
-            `alchemy:id:${WEBSITE_ID}`,
-          ],
-        }),
-      ],
-      { type: "application/json" },
-    ),
-  );
-  form.append(
-    "placeholder.js",
-    new Blob([PLACEHOLDER], { type: "application/javascript+module" }),
-    "placeholder.js",
-  );
-  yield* HttpClient.execute(
-    HttpClientRequest.put(
-      `https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${websiteOf(stage)}`,
-    ).pipe(
-      HttpClientRequest.bearerToken(Redacted.value(token)),
-      HttpClientRequest.bodyFormData(form),
-    ),
-  ).pipe(
-    Effect.flatMap((response) =>
-      response.status >= 200 && response.status < 300
-        ? Effect.void
-        : Effect.fail(`status ${String(response.status)}`),
-    ),
-    Effect.mapError(
-      (cause) =>
-        new StageError({
-          message: `cannot place ${websiteOf(stage)}: ${typeof cause === "string" ? cause : cause.message}`,
-        }),
-    ),
-  );
-  yield* Console.error(
-    `stage: placed ${websiteOf(stage)} for the first build to adopt`,
-  );
-  const tag = yield* findTag(websiteOf(stage));
-  if (Option.isNone(tag))
-    return yield* new StageError({
-      message: `${websiteOf(stage)} was placed but is not listed`,
-    });
-  return tag.value;
-});
+export const ensureWebsite = Effect.fn("DeployedStage.ensureWebsite")(
+  function* (stage: Deployed, variables: readonly StageVariable[]) {
+    const tag = yield* findTag(websiteOf(stage));
+    if (Option.isSome(tag)) return tag.value;
+    yield* requireBranchCheckout(stage);
+    yield* alchemy(["deploy", "--stage", stage, "--yes"], "up", variables);
+    const deployed = yield* findTag(websiteOf(stage));
+    if (Option.isNone(deployed))
+      return yield* new StageError({
+        message: `the first deploy of ${stage} made no ${websiteOf(stage)}`,
+      });
+    return deployed.value;
+  },
+);
 
 const Build = Schema.Struct({
   build_uuid: Schema.String,
@@ -798,8 +752,8 @@ const build = Effect.fn("DeployedStage.build")(function* (
 });
 
 /**
- * Makes the stage match `.env.<stage>`, whatever it holds now: the Website exists (a placeholder
- * when it does not), its one trigger is canonical, the trigger's variables are the file's, and a
+ * Makes the stage match `.env.<stage>`, whatever it holds now: the Website exists
+ * ({@link ensureWebsite}), its one trigger is canonical, the trigger's variables are the file's, and a
  * build of the stage's branch ran with them. Every run writes every variable and starts a build,
  * so a rerun converges to the same end. Production writes only with `confirmed`. A dry run reads
  * and prints what it would write, names only.
@@ -816,15 +770,15 @@ export const up = Effect.fn("DeployedStage.up")(function* (
       message:
         "up production writes production's configuration only with --confirm production",
     });
-  const tag = yield* findTag(websiteOf(stage));
   if (options.dryRun) {
+    const tag = yield* findTag(websiteOf(stage));
     const { kept, steps } = yield* readTriggers(stage, tag);
     const existing =
       kept === undefined ? {} : yield* triggerVariables(kept.trigger_uuid);
     const undeclared = undeclaredVariables(variables, existing);
     const writes = [
       ...(Option.isNone(tag)
-        ? [`place ${websiteOf(stage)} for the first build to adopt`]
+        ? [`first deploy of ${branchOf(stage)} from this checkout`]
         : []),
       ...steps.map(describeStep(stage)),
       `set ${names}`,
@@ -838,17 +792,29 @@ export const up = Effect.fn("DeployedStage.up")(function* (
   }
   const trigger = yield* ensureTrigger(
     stage,
-    Option.isSome(tag) ? tag.value : yield* placeWebsite(stage),
+    yield* ensureWebsite(stage, variables),
   );
   yield* syncVariables(trigger, variables);
   yield* build(stage, trigger);
   yield* Console.log(`${stage}: up`);
 });
 
-/** Runs Alchemy in the app's root as `run`, its output shown as it comes. */
+/** Alchemy's environment for `run`: the file's values as Builds passes them, and the run's reason. */
+const alchemyEnv = (variables: readonly StageVariable[], run: StageRun) => ({
+  ...Object.fromEntries(
+    variables.map(({ name, value }) => [name, Redacted.value(value)]),
+  ),
+  [STAGE_RUN]: run,
+});
+
+/**
+ * Runs Alchemy in the app's root as `run`, its output shown as it comes. Values go only in its
+ * environment, never on argv.
+ */
 const alchemy = Effect.fn("DeployedStage.alchemy")(function* (
   args: readonly string[],
   run: StageRun,
+  variables: readonly StageVariable[] = [],
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const exitCode = yield* spawner
@@ -858,7 +824,7 @@ const alchemy = Effect.fn("DeployedStage.alchemy")(function* (
         stdin: "ignore",
         stdout: "inherit",
         stderr: "inherit",
-        env: { [STAGE_RUN]: run },
+        env: alchemyEnv(variables, run),
         extendEnv: true,
       }),
     )
@@ -898,13 +864,7 @@ const plan = Effect.fn("DeployedStage.plan")(function* (
       ChildProcess.make("alchemy", ["plan", "--stage", stage], {
         cwd: ROOT,
         stdin: "ignore",
-        env: {
-          ...Object.fromEntries(
-            variables.map(({ name, value }) => [name, Redacted.value(value)]),
-          ),
-          NO_COLOR: "1",
-          [STAGE_RUN]: "check" satisfies StageRun,
-        },
+        env: { ...alchemyEnv(variables, "check"), NO_COLOR: "1" },
         extendEnv: true,
       }),
     )
@@ -1023,7 +983,7 @@ const upCommand = Command.make(
     }).pipe(Effect.mapError(toUserError)),
 ).pipe(
   Command.withDescription(
-    "Make the stage match .env.<stage>: the Website, its canonical trigger, the trigger's variables, and a build of the stage's branch.",
+    "Make the stage match .env.<stage>: the Website (a first deploy from this checkout, clean and at the stage's branch on origin, when it has none), its canonical trigger, the trigger's variables, and a build of the stage's branch.",
   ),
 );
 
@@ -1072,7 +1032,7 @@ if (import.meta.main) {
     ),
     Command.withSubcommands([upCommand, checkCommand, resetCommand]),
     Command.run({ version: "1.0.0" }),
-    Effect.provide([NodeServices.layer, FetchHttpClient.layer]),
+    Effect.provide(NodeServices.layer),
     NodeRuntime.runMain,
   );
 }

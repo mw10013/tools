@@ -1,14 +1,20 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { APP_NAME } from "#devkit/core/app.ts";
 
 import {
   canonicalTrigger,
+  ensureWebsite,
   replacesWebsite,
   stageVariables,
   type Trigger,
@@ -252,5 +258,122 @@ describe("trigger variables", () => {
         API_SECRET: { is_secret: true },
       }),
     ).toStrictEqual([]);
+  });
+});
+
+/** `cf`, `git` and `alchemy` as `ensureWebsite` calls them, reading and writing files in `$DEVKIT_FAKES`. */
+const FAKES = {
+  cf: `#!/bin/sh
+case "$*" in
+  "workers scripts search --name "*) cat "$DEVKIT_FAKES/scripts.json" ;;
+  *) echo "unexpected cf $*" >&2; exit 1 ;;
+esac
+`,
+  git: `#!/bin/sh
+shift 2
+echo "$*" >> "$DEVKIT_FAKES/git.log"
+case "$*" in
+  "status --porcelain") cat "$DEVKIT_FAKES/status" ;;
+  "fetch origin "*) ;;
+  "rev-parse HEAD") cat "$DEVKIT_FAKES/head" ;;
+  "rev-parse origin/"*) cat "$DEVKIT_FAKES/origin" ;;
+  *) echo "unexpected git $*" >&2; exit 1 ;;
+esac
+`,
+  alchemy: `#!/bin/sh
+echo "$*" > "$DEVKIT_FAKES/alchemy.args"
+echo "$DEVKIT_STAGE_RUN $API_KEY $API_SECRET" > "$DEVKIT_FAKES/alchemy.env"
+cp "$DEVKIT_FAKES/deployed.json" "$DEVKIT_FAKES/scripts.json"
+`,
+};
+
+describe("ensureWebsite", () => {
+  const saved = { path: process.env.PATH, fakes: process.env.DEVKIT_FAKES };
+  let fakes = "";
+  const fake = (file: string) => path.join(fakes, file);
+  const read = (file: string) =>
+    fs.existsSync(fake(file)) ? fs.readFileSync(fake(file), "utf8") : "";
+  const website = (stage: "staging" | "production", id: string) =>
+    JSON.stringify([{ id, script_name: `${APP_NAME}-website-${stage}` }]);
+  const checkout = (state: {
+    status?: string;
+    head?: string;
+    origin?: string;
+  }) => {
+    fs.writeFileSync(fake("status"), state.status ?? "");
+    fs.writeFileSync(fake("head"), state.head ?? "abc123\n");
+    fs.writeFileSync(fake("origin"), state.origin ?? "abc123\n");
+  };
+  const exit = variablesOf({ API_KEY: "key", API_SECRET: SECRET });
+  const variables = Exit.isSuccess(exit) ? exit.value : [];
+  const run = (stage: "staging" | "production") =>
+    Effect.runPromiseExit(
+      ensureWebsite(stage, variables).pipe(Effect.provide(NodeServices.layer)),
+    );
+
+  beforeEach(() => {
+    fakes = fs.mkdtempSync(path.join(os.tmpdir(), "devkit-stage-"));
+    for (const [name, script] of Object.entries(FAKES))
+      fs.writeFileSync(fake(name), script, { mode: 0o755 });
+    fs.writeFileSync(fake("scripts.json"), "[]");
+    fs.writeFileSync(fake("deployed.json"), website("staging", "tag-new"));
+    process.env.PATH = `${fakes}:/usr/bin:/bin`;
+    process.env.DEVKIT_FAKES = fakes;
+  });
+
+  afterEach(() => {
+    process.env.PATH = saved.path;
+    process.env.DEVKIT_FAKES = saved.fakes;
+    fs.rmSync(fakes, { recursive: true, force: true });
+  });
+
+  it("reaches only the fake alchemy", () => {
+    expect(
+      (process.env.PATH ?? "")
+        .split(":")
+        .filter((directory) => fs.existsSync(path.join(directory, "alchemy"))),
+    ).toStrictEqual([fakes]);
+  });
+
+  it("deploys a missing Website from a clean checkout at origin, values in the environment only", async () => {
+    checkout({});
+    const result = await run("staging");
+    expect(Exit.isSuccess(result) && result.value).toBe("tag-new");
+    expect(read("git.log")).toContain("fetch origin main");
+    expect(read("alchemy.args")).toBe("deploy --stage staging --yes\n");
+    expect(read("alchemy.env")).toBe(`up key ${SECRET}\n`);
+  });
+
+  it("checks production's checkout against origin/production", async () => {
+    checkout({});
+    fs.writeFileSync(fake("deployed.json"), website("production", "tag-prod"));
+    const result = await run("production");
+    expect(Exit.isSuccess(result) && result.value).toBe("tag-prod");
+    expect(read("git.log")).toContain("rev-parse origin/production");
+    expect(read("alchemy.args")).toBe("deploy --stage production --yes\n");
+  });
+
+  it("refuses a dirty checkout before deploying", async () => {
+    checkout({ status: " M src/app.ts\n" });
+    expect(failureOf(await run("staging"))).toContain(
+      "has uncommitted changes; commit or stash them",
+    );
+    expect(read("alchemy.args")).toBe("");
+  });
+
+  it("refuses a checkout that is not origin's branch", async () => {
+    checkout({ head: "abc123\n", origin: "def456\n" });
+    expect(failureOf(await run("staging"))).toContain(
+      "HEAD abc123 is not origin/main def456; run git switch main && git pull --ff-only",
+    );
+    expect(read("alchemy.args")).toBe("");
+  });
+
+  it("deploys nothing and reads no checkout when the Website exists", async () => {
+    fs.writeFileSync(fake("scripts.json"), website("staging", "tag-old"));
+    const result = await run("staging");
+    expect(Exit.isSuccess(result) && result.value).toBe("tag-old");
+    expect(read("git.log")).toBe("");
+    expect(read("alchemy.args")).toBe("");
   });
 });
