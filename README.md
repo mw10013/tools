@@ -350,14 +350,19 @@ wt list
 the first push names the branch (`git push -u origin HEAD`). It copies the
 main checkout's `.env` and symlinks its `refs` and every untracked `.env.<suffix>`
 (`.env.staging`, not the tracked `.env.example`), each when the main checkout
-has it. With a `package.json` it runs `vp install --frozen-lockfile`, then the
-repo's `worktree:init` script if it has one. `init` repeats all but the install;
-a link that is a real file or points elsewhere fails rather than being replaced. `rm` removes only landed work: no commits
+has it. With a `package.json` it runs `vp install --frozen-lockfile`. It runs
+no package script: berth leases come on demand from `vp run dev` and e2e, so a
+repo needs no worktree hooks, and a worktree made by another tool works the
+same. `init` only shares again; a link that is a real file or points elsewhere
+fails rather than being replaced. `rm` removes only landed work: no commits
 beyond origin's default branch, or a merged pull request whose head is the
-branch's tip, which is what a squash merge leaves. It runs the repo's
-`worktree:teardown` script if it has one and `berth release` if the checkout
-has a `berth.json`, then removes the worktree and deletes the branch. After
-`wt rm` from inside the worktree, `cd` out: the directory is gone.
+branch's tip, which is what a squash merge leaves. It then tears down every app
+in the worktree, at any depth outside `node_modules` and `.git`: `bosun stop
+<name>` in each folder whose `.bosun/<name>/record.json` exists, then `berth
+release` in each folder with a `berth.json`. A failed step stops `rm` before it
+removes anything. Then it stops what the worktree left running, removes the
+worktree and deletes the branch. After `wt rm` from inside the worktree, `cd`
+out: the directory is gone.
 
 Each command prints one JSON document on stdout, `{ "wt": 1, ... }`, and its
 progress on stderr. A typed failure exits 1 with `{ "wt": 1, "error": { "_tag",

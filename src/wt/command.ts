@@ -83,7 +83,7 @@ const create = Command.make(
     ),
 ).pipe(
   Command.withShortDescription(
-    "Make a worktree and branch for a task, set up by the repo's hooks",
+    "Make a worktree and branch for a task, with shared files and installed packages",
   ),
   Command.withExamples([
     {
@@ -137,7 +137,7 @@ const init = Command.make(
     run(Worktree.init(".", target), (initialized) => printJson(initialized)),
 ).pipe(
   Command.withShortDescription(
-    "Set up a worktree again: .env from the main checkout, shared links, worktree:init",
+    "Share again: .env from the main checkout, refs and .env.* links",
   ),
 );
 
