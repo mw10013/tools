@@ -25,6 +25,24 @@ export type PerDeveloper = typeof PerDeveloper.Type;
 export const Deployed = Schema.Literals(["staging", "production"]);
 export type Deployed = typeof Deployed.Type;
 
+/** The branch whose pushes deploy the stage. Production moves only by fast-forward from `main`. */
+export const branchOf = (stage: Deployed): "main" | "production" =>
+  stage === "staging" ? "main" : "production";
+
+/**
+ * The variable the `stage` CLI sets on the Alchemy runs it starts on a {@link Deployed} stage
+ * outside Workers Builds, naming why, so the stage's state store lets them through.
+ */
+export const STAGE_RUN = "DEVKIT_STAGE_RUN";
+
+export const StageRun = Schema.Literals([
+  "bootstrap",
+  "config",
+  "reset",
+  "check",
+]);
+export type StageRun = typeof StageRun.Type;
+
 /** Only disposable deployed data may be destroyed by the reset command. */
 export const ResettableDeployed = Schema.Literals(["staging"]);
 export type ResettableDeployed = typeof ResettableDeployed.Type;
@@ -119,12 +137,23 @@ export const environmentOf = (stage: string): Effect.Effect<Environment> =>
  *
  * Changing a deployed Worker's name replaces it, Durable Object storage included.
  */
-export const workerNameOf = (
+export function workerNameOf(
+  app: string,
+  stage: Deployed,
+  worker: "website" | "backend",
+): string;
+export function workerNameOf(
   app: string,
   stage: string,
   worker: "website" | "backend",
-): string | undefined =>
-  isDeployed(stage) ? `${app}-${worker}-${stage}` : undefined;
+): string | undefined;
+export function workerNameOf(
+  app: string,
+  stage: string,
+  worker: "website" | "backend",
+): string | undefined {
+  return isDeployed(stage) ? `${app}-${worker}-${stage}` : undefined;
+}
 
 /**
  * Whether this code runs in a deployed bundle rather than while the stack is planned: Alchemy's

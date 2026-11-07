@@ -5,6 +5,9 @@
  * records each file's SHA-256, and a sync refuses while any vendored file
  * differs from it, so a fix is made in tools and synced, never made in place.
  *
+ * The `cloudflare` layer imports Alchemy, so its stamp also records the Alchemy version tools
+ * builds it against, and `status` compares it with the version the app has installed.
+ *
  * @module
  */
 import { createHash } from "node:crypto";
@@ -27,6 +30,8 @@ export const Stamp = Schema.Struct({
   tools: Schema.String,
   layer: Layer,
   files: Schema.Record(Schema.String, Schema.String),
+  /** tools' `alchemy` devDependency, for a layer that imports Alchemy. */
+  alchemy: Schema.optionalKey(Schema.String),
 });
 export type Stamp = typeof Stamp.Type;
 const StampJson = Schema.fromJsonString(Stamp);
@@ -58,6 +63,34 @@ const sha256 = (text: string) =>
 
 const layersOf = (layer: Layer) => LAYERS.slice(0, LAYERS.indexOf(layer) + 1);
 
+const importsAlchemy = (layer: Layer) => layersOf(layer).includes("cloudflare");
+
+const AlchemyDependency = Schema.fromJsonString(
+  Schema.Struct({
+    version: Schema.optionalKey(Schema.String),
+    dependencies: Schema.optionalKey(
+      Schema.Record(Schema.String, Schema.String),
+    ),
+    devDependencies: Schema.optionalKey(
+      Schema.Record(Schema.String, Schema.String),
+    ),
+  }),
+);
+const decodePackage = Schema.decodeUnknownOption(AlchemyDependency);
+
+/** The `alchemy` version a `package.json` declares, or the `version` of Alchemy's own. */
+export const alchemyVersionOf = (
+  packageJson: string,
+  field: "declared" | "own",
+) =>
+  Option.flatMap(decodePackage(packageJson), (pkg) =>
+    Option.fromNullishOr(
+      field === "own"
+        ? pkg.version
+        : (pkg.devDependencies?.alchemy ?? pkg.dependencies?.alchemy),
+    ),
+  );
+
 export const source = Effect.fn("Devkit.source")(function* (
   tools: string,
   layer: Layer,
@@ -73,6 +106,12 @@ export const source = Effect.fn("Devkit.source")(function* (
   ]))
     .split("\n")
     .filter((file) => file.length > 0 && !file.endsWith(".test.ts"));
+  const alchemy = importsAlchemy(layer)
+    ? alchemyVersionOf(
+        yield* run(tools, "git", ["show", "HEAD:package.json"]),
+        "declared",
+      )
+    : Option.none<string>();
   const files = new Map<string, string>();
   for (const file of listed)
     files.set(
@@ -89,8 +128,34 @@ export const source = Effect.fn("Devkit.source")(function* (
     yield* Console.error(
       `devkit: ${SOURCE} has uncommitted changes in tools; syncing HEAD (${head.slice(0, 7)}) without them`,
     );
-  return { head, files };
+  return { head, files, alchemy };
 });
+
+/** The Alchemy version installed in the app, `None` without one. */
+const installedAlchemy = Effect.fn("Devkit.installedAlchemy")(function* (
+  app: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const file = path.join(app, "node_modules/alchemy/package.json");
+  if (!(yield* fs.exists(file))) return Option.none<string>();
+  return alchemyVersionOf(yield* fs.readFileString(file), "own");
+});
+
+/** The two Alchemy versions when both are known and differ. */
+export interface AlchemyMismatch {
+  readonly devkit: string;
+  readonly app: string;
+}
+
+const alchemyMismatch = (
+  devkit: Option.Option<string>,
+  app: Option.Option<string>,
+): Option.Option<AlchemyMismatch> =>
+  Option.filter(
+    Option.all({ devkit, app }),
+    (versions) => versions.devkit !== versions.app,
+  );
 
 const readStamp = Effect.fn("Devkit.readStamp")(function* (app: string) {
   const fs = yield* FileSystem.FileSystem;
@@ -126,6 +191,7 @@ export interface Synced {
   readonly added: ReadonlyArray<string>;
   readonly changed: ReadonlyArray<string>;
   readonly removed: ReadonlyArray<string>;
+  readonly alchemyMismatch: Option.Option<AlchemyMismatch>;
 }
 
 export const sync = Effect.fn("Devkit.sync")(function* (
@@ -147,7 +213,7 @@ export const sync = Effect.fn("Devkit.sync")(function* (
     if (edited.length > 0)
       return yield* new EditedVendorError({ files: edited });
   }
-  const { head, files } = yield* source(tools, layer);
+  const { head, files, alchemy } = yield* source(tools, layer);
   const before = Option.match(stamp, {
     onNone: () => ({}) as Record<string, string>,
     onSome: (s) => s.files,
@@ -170,12 +236,28 @@ export const sync = Effect.fn("Devkit.sync")(function* (
   yield* fs.writeFileString(
     path.join(app, STAMP),
     `${JSON.stringify(
-      { devkit: 1, tools: head, layer, files: hashes } satisfies Stamp,
+      {
+        devkit: 1,
+        tools: head,
+        layer,
+        files: hashes,
+        ...Option.match(alchemy, {
+          onNone: () => ({}),
+          onSome: (version) => ({ alchemy: version }),
+        }),
+      } satisfies Stamp,
       null,
       2,
     )}\n`,
   );
-  return { tools: head, layer, added, changed, removed } satisfies Synced;
+  return {
+    tools: head,
+    layer,
+    added,
+    changed,
+    removed,
+    alchemyMismatch: alchemyMismatch(alchemy, yield* installedAlchemy(app)),
+  } satisfies Synced;
 });
 
 export interface Status {
@@ -184,6 +266,8 @@ export interface Status {
   readonly layer: Option.Option<Layer>;
   readonly behind: boolean;
   readonly edited: ReadonlyArray<string>;
+  /** The vendored devkit was built against another Alchemy than the app runs. */
+  readonly alchemyMismatch: Option.Option<AlchemyMismatch>;
 }
 
 export const status = Effect.fn("Devkit.status")(function* (
@@ -199,6 +283,7 @@ export const status = Effect.fn("Devkit.status")(function* (
       layer: Option.none(),
       behind: true,
       edited: [],
+      alchemyMismatch: Option.none(),
     } satisfies Status;
   }
   const { head, files } = yield* source(tools, stamp.value.layer);
@@ -212,5 +297,9 @@ export const status = Effect.fn("Devkit.status")(function* (
     layer: Option.some(stamp.value.layer),
     behind,
     edited: yield* editedFiles(app, stamp.value),
+    alchemyMismatch: alchemyMismatch(
+      Option.fromNullishOr(stamp.value.alchemy),
+      yield* installedAlchemy(app),
+    ),
   } satisfies Status;
 });
