@@ -12,7 +12,7 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
-import { run as runProcess } from "#wt/process.ts";
+import * as Git from "#wt/git.ts";
 
 import * as Devkit from "./sync.ts";
 
@@ -30,9 +30,7 @@ const warnAlchemy = (mismatch: Option.Option<Devkit.AlchemyMismatch>) =>
 const printJson = (value: object) =>
   Console.log(JSON.stringify({ devkit: 1, ...value }, null, 2));
 
-const appRoot = runProcess(".", "git", ["rev-parse", "--show-toplevel"]).pipe(
-  Effect.map((out) => out.trim()),
-);
+const appRoot = Git.appRoot(process.cwd());
 
 const run = <
   A extends object,

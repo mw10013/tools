@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
@@ -72,6 +73,33 @@ export const repositoryOf = Effect.fn("Git.repositoryOf")(function* (
     name: path.basename(root),
     hasOrigin: remotes.split("\n").includes("origin"),
   } satisfies Repository;
+});
+
+/**
+ * The app a directory belongs to: the nearest directory from it upward that
+ * holds a `package.json`, never above the git toplevel, which is the answer
+ * when none does. bosun and devkit key on it, so each app in a monorepo is its
+ * own unit and a single-app repo's is its toplevel.
+ */
+export const appRoot = Effect.fn("Git.appRoot")(function* (directory: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const toplevel = (yield* run(directory, "git", [
+    "rev-parse",
+    "--show-toplevel",
+  ]).pipe(
+    Effect.catchTag("CommandFailedError", () =>
+      Effect.fail(new NotARepositoryError({ directory })),
+    ),
+  )).trim();
+  // git prints the toplevel with symlinks resolved, so the walk compares real paths.
+  let candidate = yield* Effect.orDie(fs.realPath(directory));
+  while (candidate !== toplevel && candidate !== path.dirname(candidate)) {
+    if (yield* Effect.orDie(fs.exists(path.join(candidate, "package.json"))))
+      return candidate;
+    candidate = path.dirname(candidate);
+  }
+  return toplevel;
 });
 
 export const worktrees = Effect.fn("Git.worktrees")(function* (

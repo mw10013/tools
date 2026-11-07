@@ -379,6 +379,10 @@ Workers, `shopify` for an embedded Shopify app. Each layer includes the ones
 before it. An app commits a read-only copy and imports it through
 `"#devkit/*": "./vendor/devkit/*"` in `package.json`, so the app builds alone,
 on Workers Builds too, and devkit resolves the app's own `effect` and Alchemy.
+`devkit` works on the app root around the working directory: the nearest folder
+upward that holds a `package.json`, never above the git toplevel. So in a
+monorepo it syncs and checks `apps/x/vendor/devkit/` against `apps/x`'s
+installed Alchemy when run inside `apps/x`.
 
 ```sh
 devkit sync shopify   # copy tools' HEAD into vendor/devkit/; later syncs reuse the layer
