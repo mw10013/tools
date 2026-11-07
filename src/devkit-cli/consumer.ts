@@ -238,7 +238,7 @@ export const lockedOf = Effect.fn("Consumer.lockedOf")(function* (
 
 /**
  * `root` and each workspace package its `pnpm-workspace.yaml` lists, as directories that hold a
- * `package.json`. A pattern ending in `/*` or `/**` lists the folders directly under its base.
+ * `package.json`, each once (`.` names the root again). A pattern ending in `/*` or `/**` lists the folders directly under its base.
  */
 export const packagesOf = Effect.fn("Consumer.packagesOf")(function* (
   root: string,
@@ -269,5 +269,5 @@ export const packagesOf = Effect.fn("Consumer.packagesOf")(function* (
       )
         found.push(candidate);
   }
-  return found;
+  return [...new Set(found)];
 });

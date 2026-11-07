@@ -229,6 +229,8 @@ describe("status of a projects directory", () => {
       manifest("link:../../tools/src/devkit"),
     );
     write(projects, "plain/package.json", "{}\n");
+    write(projects, "self/pnpm-workspace.yaml", "packages:\n  - .\n");
+    write(projects, "self/package.json", manifest(PINNED));
     write(projects, "node_modules/stray/package.json", manifest(PINNED));
     write(projects, "refs/effect/package.json", manifest(PINNED));
     write(projects, "notes.txt", "not a directory\n");
@@ -241,6 +243,7 @@ describe("status of a projects directory", () => {
       ["mono", "behind"],
       ["mono/apps/testbed", "behind"],
       ["old", "legacy"],
+      ["self", "behind"],
       ["trial", "unpinned"],
     ]);
   });
