@@ -1,28 +1,34 @@
 #!/usr/bin/env vpx
 /**
- * `vp run stage <command> <stage>`: a {@link Deployed} stage's Workers Builds trigger, its health,
- * its stage config record, and the laptop runs of Alchemy on it. An app runs this file directly:
+ * `vp run stage <command> <stage>`: sets up a {@link Deployed} stage's Workers Builds deploys,
+ * reports its health, and resets staging. An app runs this file directly:
  * `"stage": "vpx vendor/devkit/cloudflare/deployed-stage.ts"`.
  *
  * Workers Builds deploys a stage with the app's `deploy:<stage>` script, plain
- * `alchemy deploy --stage <stage> --yes`. The stage's state store (`stageState`) refuses any other
- * Alchemy run on the stage unless {@link STAGE_RUN} names why, which only this CLI sets, on the
- * Alchemy runs it starts, and then only the command that reason is for:
+ * `alchemy deploy --stage <stage> --yes`, from the stage's branch. The stage's values are the
+ * trigger's variables, so Builds puts them in the deploy's environment and Alchemy binds what a
+ * Worker reads with `Config`.
  *
- * - `check` reads, and changes nothing: the plan, so a missing or invalid stage config record
- *   shows; whether the plan replaces the Website Worker, which takes its trigger with it; and the
- *   trigger against the canonical one.
- * - `config` writes the stage config record from `.env.<stage>`, deploying {@link STAGE_CONFIG_STACK}.
- * - `trigger` makes the stage's trigger the {@link canonicalTrigger}. It runs from a laptop: the
- *   Builds API takes only a user API token.
- * - `reset` (staging only) destroys the stage, deploys it again and recreates its trigger. It is
- *   the only destroy of a deployed stage.
- * - `bootstrap` is the owner's deploy of a stage whose Website has no trigger yet.
+ * - `up` makes the stage match `.env.<stage>`: the Website exists, its one trigger is the
+ *   {@link canonicalTrigger}, the trigger's variables are the file's, and a build of the branch
+ *   ran with them. It runs from a laptop: the Builds API takes only a user API token. A stage
+ *   with no Website gets its first deploy from the laptop, since a trigger needs a Worker to
+ *   key to; every later deploy runs in Builds.
+ * - `check` reads, and changes nothing: the plan, the trigger, its variables' names and the latest
+ *   build.
+ * - `reset` (staging only) destroys the stage, then runs `up`. It is the only destroy of a
+ *   deployed stage.
+ *
+ * The stage's state store (`stageState`) refuses any other Alchemy run on the stage unless
+ * {@link STAGE_RUN} names why, which only this CLI sets, and then only the command that reason is
+ * for.
  *
  * @see `~/.claude/skills/coder/references/deployed-stages.md`
  * @module
  */
-import { stripVTControlCharacters } from "node:util";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { parseEnv, stripVTControlCharacters } from "node:util";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -31,13 +37,21 @@ import * as CliError from "effect/cli/CliError";
 import * as Command from "effect/cli/Command";
 import * as Flag from "effect/cli/Flag";
 import * as Console from "effect/Console";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as Redacted from "effect/Redacted";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import {
+  checkStageEnv,
+  type StageFields,
+} from "#devkit/cloudflare/deployed-stack.ts";
 import {
   branchOf,
   Deployed,
@@ -60,8 +74,8 @@ class StageError extends Schema.TaggedError<StageError>()("StageError", {
  */
 export const SHARED_BUILD_TOKEN = "Workers Builds - 2026-05-31 17:29";
 
-/** The app's stage config writer stack, relative to its root. */
-export const STAGE_CONFIG_STACK = "stacks/stage-config.ts";
+/** The app's stage fields ({@link StageFields}), its default export, relative to its root. */
+export const STAGE_ENV_MODULE = "stacks/stage-env.ts";
 
 const websiteOf = (stage: Deployed) => workerNameOf(APP_NAME, stage, "website");
 
@@ -87,8 +101,7 @@ export type Trigger = typeof Trigger.Type;
 
 /**
  * Every trigger has this shape, so no setting is chosen by hand. The deploy command is the app's
- * `deploy:<stage>` script; there is no build command, since the deploy builds; and no trigger
- * variables, since a deployed stage's values come from its stage config record.
+ * `deploy:<stage>` script; there is no build command, since the deploy builds.
  */
 export const canonicalTrigger = (stage: Deployed, buildTokenUuid: string) => ({
   trigger_name: websiteOf(stage),
@@ -113,17 +126,150 @@ export const triggerDrift = (
     (key) => JSON.stringify(trigger[key]) !== JSON.stringify(canonical[key]),
   );
 
+/** One write that brings a Website's triggers to the canonical one. */
+export type TriggerStep =
+  | { readonly _tag: "Create" }
+  | {
+      readonly _tag: "Update";
+      readonly trigger: Trigger;
+      readonly settings: readonly string[];
+    }
+  | { readonly _tag: "Delete"; readonly trigger: Trigger }
+  | { readonly _tag: "DisablePreviews" };
+
 /**
- * Whether an `alchemy plan` replaces the Website Worker. A replaced Worker gets a new tag, and
- * Cloudflare deletes the trigger with the old one. Alchemy prints a resource's line as
- * `[<FQN>] <action>`, after its log prefix `[<time>] <LEVEL>: `.
- *
- * @see `formatPlan` in Alchemy's `src/Cli/LoggingCli.ts` and `prettyLine` in `src/Util/ConsoleSink.ts`
+ * The writes, in order, that leave the Website with exactly the canonical trigger and previews
+ * off; empty when it has it. A trigger on the app's repository is kept and updated in place, its
+ * own branch's first, so the Worker is never without one; with none, the canonical trigger is
+ * created before any other is deleted.
  */
-export const replacesWebsite = (plan: string) =>
-  /^(?:\[[\d:.]+\] [A-Z]+: )?\[Website\] replace\b/mu.test(
-    stripVTControlCharacters(plan),
+export const triggerPlan = (
+  canonical: CanonicalTrigger,
+  repoName: string,
+  triggers: readonly Trigger[],
+  previews: boolean,
+): {
+  readonly kept: Trigger | undefined;
+  readonly steps: readonly TriggerStep[];
+} => {
+  const onRepo = triggers.filter(
+    (trigger) => trigger.repo_connection.repo_name === repoName,
   );
+  const kept =
+    onRepo.find(
+      (trigger) =>
+        JSON.stringify(trigger.branch_includes) ===
+        JSON.stringify(canonical.branch_includes),
+    ) ?? onRepo[0];
+  const settings = kept === undefined ? [] : triggerDrift(kept, canonical);
+  const steps: TriggerStep[] = [];
+  if (kept === undefined) steps.push({ _tag: "Create" });
+  else if (settings.length > 0)
+    steps.push({ _tag: "Update", trigger: kept, settings });
+  for (const trigger of triggers)
+    if (trigger !== kept) steps.push({ _tag: "Delete", trigger });
+  if (previews) steps.push({ _tag: "DisablePreviews" });
+  return { kept, steps };
+};
+
+const describeStep =
+  (stage: Deployed) =>
+  (step: TriggerStep): string => {
+    switch (step._tag) {
+      case "Create": {
+        return `create the ${stage} trigger`;
+      }
+      case "Update": {
+        return `update ${step.settings.join(", ")} on the ${stage} trigger`;
+      }
+      case "Delete": {
+        return `delete trigger ${step.trigger.trigger_uuid} (${step.trigger.trigger_name})`;
+      }
+      case "DisablePreviews": {
+        return `turn previews off on ${websiteOf(stage)}`;
+      }
+    }
+  };
+
+/** One trigger variable: a line of `.env.<stage>`, its value the file's raw string. */
+export interface StageVariable {
+  readonly name: string;
+  readonly value: Redacted.Redacted;
+  readonly secret: boolean;
+}
+
+/**
+ * The trigger variables `file` (a parsed `.env.<stage>`) makes: one per field, a secret when the
+ * field decodes to a `Redacted`. It fails naming every field the file lacks or holds an invalid
+ * value for and every key no field declares, since the trigger's variables must equal the file.
+ * Names only, never values.
+ */
+export const stageVariables = Effect.fn("DeployedStage.stageVariables")(
+  function* (
+    fields: StageFields,
+    file: Readonly<Record<string, string>>,
+    source: string,
+  ) {
+    const { invalid, secrets } = yield* checkStageEnv(fields, file);
+    const undeclared = Object.keys(file).filter(
+      (name) => !Object.hasOwn(fields.fields, name),
+    );
+    const problems = [
+      ...(invalid.length > 0
+        ? [`lacks or has invalid ${invalid.join(", ")}`]
+        : []),
+      ...(undeclared.length > 0
+        ? [
+            `holds ${undeclared.join(", ")}, which ${STAGE_ENV_MODULE} does not declare`,
+          ]
+        : []),
+    ];
+    if (problems.length > 0)
+      return yield* new StageError({
+        message: `${source} ${problems.join(" and ")}`,
+      });
+    return Object.keys(fields.fields).map((name): StageVariable => ({
+      name,
+      value: Redacted.make(file[name] ?? ""),
+      secret: secrets.includes(name),
+    }));
+  },
+);
+
+/** A trigger's variables as `cf builds triggers environment-variables list` gives them; a secret's value reads back `null`. */
+const TriggerVariables = Schema.Record(
+  Schema.String,
+  Schema.Struct({ is_secret: Schema.Boolean }),
+);
+type TriggerVariables = typeof TriggerVariables.Type;
+
+/** The trigger's variables that no field declares, which `up` deletes. */
+export const undeclaredVariables = (
+  variables: readonly StageVariable[],
+  existing: TriggerVariables,
+): readonly string[] =>
+  Object.keys(existing).filter(
+    (name) => !variables.some((variable) => variable.name === name),
+  );
+
+/** How the trigger's variables differ from `variables` by name and secrecy; values cannot be read back. */
+export const variableProblems = (
+  variables: readonly StageVariable[],
+  existing: TriggerVariables,
+): readonly string[] => [
+  ...variables.flatMap(({ name, secret }) => {
+    const found = existing[name];
+    if (found === undefined) return [`the trigger lacks ${name}`];
+    if (found.is_secret !== secret)
+      return [
+        `the trigger holds ${name} as ${found.is_secret ? "a secret" : "plain"}`,
+      ];
+    return [];
+  }),
+  ...undeclaredVariables(variables, existing).map(
+    (name) => `the trigger holds ${name}, which no field declares`,
+  ),
+];
 
 const decodeJson =
   <S extends Schema.Top & { readonly DecodingServices: never }>(
@@ -141,6 +287,47 @@ const cf = (args: readonly string[]) =>
   runCommand("cf", args).pipe(
     Effect.mapError((error) => new StageError({ message: error.message })),
   );
+
+/** The app's stage fields, from {@link STAGE_ENV_MODULE}. */
+const loadStageFields = Effect.fn("DeployedStage.loadStageFields")(
+  function* () {
+    const file = path.join(ROOT, STAGE_ENV_MODULE);
+    const module: unknown = yield* Effect.tryPromise({
+      try: () => import(pathToFileURL(file).href),
+      catch: () => new StageError({ message: `cannot load ${file}` }),
+    });
+    const fields =
+      typeof module === "object" && module !== null && "default" in module
+        ? module.default
+        : undefined;
+    if (!Schema.isSchema(fields) || !("fields" in fields))
+      return yield* new StageError({
+        message: `${STAGE_ENV_MODULE} must export a Schema.Struct of the stage's fields as its default`,
+      });
+    return fields as StageFields;
+  },
+);
+
+/** `.env.<stage>` at the app's root, checked against the app's fields. */
+const readStageFile = Effect.fn("DeployedStage.readStageFile")(function* (
+  stage: Deployed,
+) {
+  const fields = yield* loadStageFields();
+  const name = `.env.${stage}`;
+  const text = yield* (yield* FileSystem.FileSystem)
+    .readFileString(path.join(ROOT, name))
+    .pipe(
+      Effect.mapError(
+        () => new StageError({ message: `cannot read ${name} at ${ROOT}` }),
+      ),
+    );
+  const file = Object.fromEntries(
+    Object.entries(parseEnv(text)).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  );
+  return yield* stageVariables(fields, file, name);
+});
 
 const findTag = Effect.fn("DeployedStage.findTag")(function* (name: string) {
   const scripts = yield* cf([
@@ -163,18 +350,6 @@ const findTag = Effect.fn("DeployedStage.findTag")(function* (name: string) {
     Option.fromNullishOr(scripts.find((script) => script.script_name === name)),
     (script) => script.id,
   );
-});
-
-const requireTag = Effect.fn("DeployedStage.requireTag")(function* (
-  stage: Deployed,
-) {
-  const website = websiteOf(stage);
-  const tag = yield* findTag(website);
-  if (Option.isNone(tag))
-    return yield* new StageError({
-      message: `${website} does not exist. Deploy ${stage} first`,
-    });
-  return tag.value;
 });
 
 const listTriggers = (tag: string) =>
@@ -221,17 +396,16 @@ const triggerVariables = (triggerUuid: string) =>
   ]).pipe(
     Effect.flatMap(
       decodeJson(
-        Schema.Record(Schema.String, Schema.Unknown),
+        TriggerVariables,
         "cf builds triggers environment-variables list",
       ),
     ),
-    Effect.map(Object.keys),
   );
 
 /**
- * Whether the Worker builds branches other than its own, `None` when Builds has no configuration
+ * Whether the Worker builds branches other than its own; `false` when Builds has no configuration
  * for it (`cf` exits 1 on the 404). Previews can also be a second trigger, which
- * {@link ensureTrigger} deletes.
+ * {@link triggerPlan} deletes.
  */
 const previewsEnabled = (tag: string) =>
   runCommand("cf", ["builds", "workers", "get", tag]).pipe(
@@ -241,21 +415,19 @@ const previewsEnabled = (tag: string) =>
         "cf builds workers get",
       ),
     ),
-    Effect.map((config) => Option.some(config.previews_enabled)),
-    Effect.catchTag("CommandError", () => Effect.succeedNone),
+    Effect.map((config) => config.previews_enabled),
+    Effect.catchTag("CommandError", () => Effect.succeed(false)),
+  );
+
+const git = (args: readonly string[]) =>
+  runCommand("git", ["-C", ROOT, ...args]).pipe(
+    Effect.map((output) => output.trim()),
+    Effect.mapError((error) => new StageError({ message: error.message })),
   );
 
 /** The app's GitHub repository, from `origin`. */
 const githubRepo = Effect.fn("DeployedStage.githubRepo")(function* () {
-  const url = (yield* runCommand("git", [
-    "-C",
-    ROOT,
-    "remote",
-    "get-url",
-    "origin",
-  ]).pipe(
-    Effect.mapError((error) => new StageError({ message: error.message })),
-  )).trim();
+  const url = yield* git(["remote", "get-url", "origin"]);
   const match = /github\.com[:/](?<owner>[^/]+)\/(?<name>.+?)(?:\.git)?$/u.exec(
     url,
   );
@@ -272,9 +444,7 @@ const githubRepo = Effect.fn("DeployedStage.githubRepo")(function* () {
  * (an app's first trigger), it is upserted from GitHub's ids. Either way the Cloudflare GitHub
  * App must already have access to the repository, which only the owner can grant.
  */
-const repoConnection = Effect.fn("DeployedStage.repoConnection")(function* (
-  dryRun: boolean,
-) {
+const repoConnection = Effect.fn("DeployedStage.repoConnection")(function* () {
   const repo = yield* githubRepo();
   for (const stage of Deployed.literals) {
     const tag = yield* findTag(websiteOf(stage));
@@ -300,7 +470,7 @@ const repoConnection = Effect.fn("DeployedStage.repoConnection")(function* (
       ),
     ),
   );
-  const upsert = [
+  const connection = yield* cf([
     "builds",
     "repos",
     "connections",
@@ -313,12 +483,7 @@ const repoConnection = Effect.fn("DeployedStage.repoConnection")(function* (
       repo_id: String(ids.id),
       repo_name: ids.name,
     }),
-  ];
-  if (dryRun) {
-    yield* Console.log(yield* cf([...upsert, "--dry-run"]));
-    return "<the upserted connection>";
-  }
-  const connection = yield* cf(upsert).pipe(
+  ]).pipe(
     Effect.flatMap(
       decodeJson(
         Schema.Struct({ repo_connection_uuid: Schema.String }),
@@ -332,155 +497,324 @@ const repoConnection = Effect.fn("DeployedStage.repoConnection")(function* (
   return connection.repo_connection_uuid;
 });
 
-/** What `check` and `trigger` find wrong with a stage's trigger; empty when it is canonical. */
-const triggerProblems = Effect.fn("DeployedStage.triggerProblems")(function* (
+/** The Website's triggers, read, and the {@link triggerPlan} for them; a missing Website has none. */
+const readTriggers = Effect.fn("DeployedStage.readTriggers")(function* (
   stage: Deployed,
-  tag: string,
+  tag: Option.Option<string>,
 ) {
   const canonical = canonicalTrigger(stage, yield* sharedBuildToken());
   const repo = yield* githubRepo();
-  const triggers = yield* listTriggers(tag);
-  const problems: string[] = [];
-  if (triggers.length !== 1)
-    problems.push(
-      `${String(triggers.length)} triggers on ${websiteOf(stage)}; expected exactly one`,
-    );
-  for (const trigger of triggers) {
-    const drift = triggerDrift(trigger, canonical);
-    if (drift.length > 0)
-      problems.push(
-        `trigger ${trigger.trigger_uuid} differs in ${drift.join(", ")}`,
-      );
-    if (trigger.repo_connection.repo_name !== repo.name)
-      problems.push(
-        `trigger ${trigger.trigger_uuid} builds repository ${trigger.repo_connection.repo_name}, not ${repo.name}`,
-      );
-    const variables = yield* triggerVariables(trigger.trigger_uuid);
-    if (variables.length > 0)
-      problems.push(
-        `trigger ${trigger.trigger_uuid} sets variables ${variables.join(", ")}`,
-      );
-  }
-  if (Option.getOrElse(yield* previewsEnabled(tag), () => false))
-    problems.push(`${websiteOf(stage)} has previews enabled`);
-  return problems;
+  const triggers = Option.isSome(tag) ? yield* listTriggers(tag.value) : [];
+  const previews = Option.isSome(tag)
+    ? yield* previewsEnabled(tag.value)
+    : false;
+  return {
+    canonical,
+    ...triggerPlan(canonical, repo.name, triggers, previews),
+  };
 });
 
 /**
- * Makes the stage's one trigger canonical. A trigger on the right repository is updated in place,
- * so the Worker is never without one; otherwise the canonical trigger is created before any old one
- * is deleted. Any other trigger (a preview trigger) is deleted, and previews are turned off.
- * `dryRun` passes `--dry-run` to every write, which prints each request instead of sending it; a
- * dry run with nothing to write still checks the trigger and says it is canonical.
+ * Makes the stage's one trigger canonical ({@link triggerPlan}), then reads it back and requires
+ * nothing left to do. Returns the trigger's uuid.
  */
-export const ensureTrigger = Effect.fn("DeployedStage.ensureTrigger")(
-  function* (stage: Deployed, dryRun: boolean) {
-    const tag = yield* requireTag(stage);
-    const canonical = canonicalTrigger(stage, yield* sharedBuildToken());
-    const repo = yield* githubRepo();
-    const triggers = yield* listTriggers(tag);
-    let wrote = false;
-    const done = (what: string) =>
-      Console.error(`stage: ${dryRun ? "would have " : ""}${what}`);
-    const write = (args: readonly string[]) =>
-      Effect.sync(() => {
-        wrote = true;
-      }).pipe(
-        Effect.andThen(cf([...args, ...(dryRun ? ["--dry-run"] : [])])),
-        Effect.tap((out) => (dryRun ? Console.log(out) : Effect.void)),
-      );
-    const onRepo = triggers.filter(
-      (trigger) => trigger.repo_connection.repo_name === repo.name,
-    );
-    const keep =
-      onRepo.find(
-        (trigger) =>
-          JSON.stringify(trigger.branch_includes) ===
-          JSON.stringify(canonical.branch_includes),
-      ) ?? onRepo[0];
-    if (keep === undefined) {
-      const connection = yield* repoConnection(dryRun);
-      yield* write([
-        "builds",
-        "triggers",
-        "create",
-        "--body",
-        JSON.stringify({
-          ...canonical,
-          external_script_id: tag,
-          repo_connection_uuid: connection,
-        }),
-      ]);
-      yield* done(`created the ${stage} trigger`);
-    } else if (triggerDrift(keep, canonical).length > 0) {
-      yield* write([
-        "builds",
-        "triggers",
-        "update",
-        keep.trigger_uuid,
-        "--body",
-        JSON.stringify(canonical),
-      ]);
-      yield* done(
-        `updated ${triggerDrift(keep, canonical).join(", ")} on the ${stage} trigger`,
-      );
-    }
-    if (keep !== undefined)
-      for (const name of yield* triggerVariables(keep.trigger_uuid)) {
-        yield* write([
+const ensureTrigger = Effect.fn("DeployedStage.ensureTrigger")(function* (
+  stage: Deployed,
+  tag: string,
+) {
+  const { canonical, kept, steps } = yield* readTriggers(
+    stage,
+    Option.some(tag),
+  );
+  const apply = (step: TriggerStep) => {
+    switch (step._tag) {
+      case "Create": {
+        return Effect.gen(function* () {
+          const created = yield* cf([
+            "builds",
+            "triggers",
+            "create",
+            "--body",
+            JSON.stringify({
+              ...canonical,
+              external_script_id: tag,
+              repo_connection_uuid: yield* repoConnection(),
+            }),
+          ]).pipe(
+            Effect.flatMap(
+              decodeJson(
+                Schema.Struct({ trigger_uuid: Schema.String }),
+                "cf builds triggers create",
+              ),
+            ),
+          );
+          return Option.some(created.trigger_uuid);
+        });
+      }
+      case "Update": {
+        return cf([
           "builds",
           "triggers",
-          "environment-variables",
-          "delete",
-          name,
-          "--trigger-uuid",
-          keep.trigger_uuid,
-          "--force",
-        ]);
-        yield* done(`deleted trigger variable ${name}`);
+          "update",
+          step.trigger.trigger_uuid,
+          "--body",
+          JSON.stringify(canonical),
+        ]).pipe(Effect.as(Option.none<string>()));
       }
-    for (const trigger of triggers)
-      if (trigger !== keep) {
-        yield* write([
+      case "Delete": {
+        return cf([
           "builds",
           "triggers",
           "delete",
-          trigger.trigger_uuid,
+          step.trigger.trigger_uuid,
           "--force",
-        ]);
-        yield* done(
-          `deleted trigger ${trigger.trigger_uuid} (${trigger.trigger_name})`,
-        );
+        ]).pipe(Effect.as(Option.none<string>()));
       }
-    if (Option.getOrElse(yield* previewsEnabled(tag), () => false)) {
-      yield* write([
-        "builds",
-        "workers",
-        "update",
-        tag,
-        "--previews-enabled",
-        "false",
-      ]);
-      yield* done(`turned previews off on ${websiteOf(stage)}`);
+      case "DisablePreviews": {
+        return cf([
+          "builds",
+          "workers",
+          "update",
+          tag,
+          "--previews-enabled",
+          "false",
+        ]).pipe(Effect.as(Option.none<string>()));
+      }
     }
-    if (wrote && dryRun) return;
-    if (!wrote)
-      yield* Console.error(`stage: the ${stage} trigger needed no change`);
-    const problems = yield* triggerProblems(stage, tag);
-    if (problems.length > 0)
+  };
+  const created = yield* Effect.forEach(steps, (step) =>
+    apply(step).pipe(
+      Effect.tap(() =>
+        Console.error(`stage: did ${describeStep(stage)(step)}`),
+      ),
+    ),
+  );
+  const uuid = Option.getOrUndefined(
+    Option.orElse(Option.firstSomeOf(created), () =>
+      Option.fromNullishOr(kept?.trigger_uuid),
+    ),
+  );
+  const after = yield* readTriggers(stage, Option.some(tag));
+  if (after.steps.length > 0 || uuid === undefined)
+    return yield* new StageError({
+      message: `the ${stage} trigger is still not canonical: it needs ${after.steps.map(describeStep(stage)).join("; ")}`,
+    });
+  return uuid;
+});
+
+/**
+ * Sets every variable in one request and deletes the trigger's undeclared ones, upsert first so the
+ * trigger never lacks a value. The body, secrets included, goes to `cf` as a file in a temporary
+ * directory only this user can read, removed after, never on argv.
+ */
+const syncVariables = Effect.fn("DeployedStage.syncVariables")(function* (
+  triggerUuid: string,
+  variables: readonly StageVariable[],
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const failed = () =>
+    new StageError({ message: "cannot write the variables' request body" });
+  const directory = yield* fs
+    .makeTempDirectoryScoped({ prefix: "devkit-stage-" })
+    .pipe(Effect.mapError(failed));
+  const body = path.join(directory, "variables.json");
+  yield* fs
+    .writeFileString(
+      body,
+      JSON.stringify(
+        Object.fromEntries(
+          variables.map(({ name, value, secret }) => [
+            name,
+            { value: Redacted.value(value), is_secret: secret },
+          ]),
+        ),
+      ),
+      { mode: 0o600 },
+    )
+    .pipe(Effect.mapError(failed));
+  yield* cf([
+    "builds",
+    "triggers",
+    "environment-variables",
+    "upsert",
+    triggerUuid,
+    "--body",
+    `@${body}`,
+  ]);
+  yield* Console.error(
+    `stage: set ${variables.map(({ name }) => name).join(", ")}`,
+  );
+  for (const name of undeclaredVariables(
+    variables,
+    yield* triggerVariables(triggerUuid),
+  )) {
+    yield* cf([
+      "builds",
+      "triggers",
+      "environment-variables",
+      "delete",
+      name,
+      "--trigger-uuid",
+      triggerUuid,
+      "--force",
+    ]);
+    yield* Console.error(`stage: deleted ${name}`);
+  }
+}, Effect.scoped);
+
+/**
+ * Refuses unless the checkout is clean and its `HEAD` is the stage's branch on `origin`, fetched
+ * now, so a deploy from it ships exactly the commit a Builds deploy would.
+ */
+const requireBranchCheckout = Effect.fn("DeployedStage.requireBranchCheckout")(
+  function* (stage: Deployed) {
+    const branch = branchOf(stage);
+    if ((yield* git(["status", "--porcelain"])) !== "")
       return yield* new StageError({
-        message: `the ${stage} trigger is still not canonical: ${problems.join("; ")}`,
+        message: `the first deploy of ${stage} ships this checkout, which has uncommitted changes; commit or stash them, then rerun`,
       });
-    yield* Console.log(
-      `${stage}: the trigger on ${websiteOf(stage)} is canonical`,
-    );
+    yield* git(["fetch", "origin", branch]);
+    const head = yield* git(["rev-parse", "HEAD"]);
+    const remote = yield* git(["rev-parse", `origin/${branch}`]);
+    if (head !== remote)
+      return yield* new StageError({
+        message: `the first deploy of ${stage} ships this checkout, whose HEAD ${head} is not origin/${branch} ${remote}; check out ${branch} at origin/${branch} (git switch ${branch}, then git pull --ff-only if behind or git push if ahead), then rerun`,
+      });
   },
 );
 
-/** Runs Alchemy in the app's root as `run`, its output shown as it comes. */
+/**
+ * The Website's tag. A stage with none gets its first deploy here, since a trigger needs the
+ * Worker it is keyed to: Alchemy from this checkout, once {@link requireBranchCheckout} passes,
+ * with the file's values in its environment as Builds passes them.
+ */
+export const ensureWebsite = Effect.fn("DeployedStage.ensureWebsite")(
+  function* (stage: Deployed, variables: readonly StageVariable[]) {
+    const tag = yield* findTag(websiteOf(stage));
+    if (Option.isSome(tag)) return tag.value;
+    yield* requireBranchCheckout(stage);
+    yield* alchemy(["deploy", "--stage", stage, "--yes"], "up", variables);
+    const deployed = yield* findTag(websiteOf(stage));
+    if (Option.isNone(deployed))
+      return yield* new StageError({
+        message: `the first deploy of ${stage} made no ${websiteOf(stage)}`,
+      });
+    return deployed.value;
+  },
+);
+
+const Build = Schema.Struct({
+  build_uuid: Schema.String,
+  status: Schema.String,
+  build_outcome: Schema.NullOr(Schema.String),
+});
+
+const BUILD_POLL = Duration.seconds(15);
+const BUILD_TIMEOUT = Duration.minutes(30);
+
+/** Starts a build of the stage's branch and waits for its outcome. */
+const build = Effect.fn("DeployedStage.build")(function* (
+  stage: Deployed,
+  triggerUuid: string,
+) {
+  const started = yield* cf([
+    "builds",
+    "create",
+    triggerUuid,
+    "--branch",
+    branchOf(stage),
+  ]).pipe(Effect.flatMap(decodeJson(Build, "cf builds create")));
+  const logs = `cf builds logs get ${started.build_uuid}`;
+  yield* Console.error(
+    `stage: started build ${started.build_uuid} of ${branchOf(stage)}; its log: ${logs}`,
+  );
+  const done = yield* cf(["builds", "get", started.build_uuid]).pipe(
+    Effect.flatMap(decodeJson(Build, "cf builds get")),
+    Effect.repeat({
+      schedule: Schedule.spaced(BUILD_POLL),
+      until: (current) => current.status === "stopped",
+    }),
+    Effect.timeoutOrElse({
+      duration: BUILD_TIMEOUT,
+      orElse: () =>
+        Effect.fail(
+          new StageError({
+            message: `build ${started.build_uuid} is still running; watch it with ${logs}`,
+          }),
+        ),
+    }),
+  );
+  if (done.build_outcome !== "success")
+    return yield* new StageError({
+      message: `build ${done.build_uuid} ended ${done.build_outcome ?? "without an outcome"}; read ${logs}`,
+    });
+  yield* Console.log(`${stage}: build ${done.build_uuid} succeeded`);
+});
+
+/**
+ * Makes the stage match `.env.<stage>`, whatever it holds now: the Website exists
+ * ({@link ensureWebsite}), its one trigger is canonical, the trigger's variables are the file's, and a
+ * build of the stage's branch ran with them. Every run writes every variable and starts a build,
+ * so a rerun converges to the same end. Production writes only with `confirmed`. A dry run reads
+ * and prints what it would write, names only.
+ */
+export const up = Effect.fn("DeployedStage.up")(function* (
+  stage: Deployed,
+  options: { readonly dryRun: boolean; readonly confirmed: boolean },
+) {
+  const variables = yield* readStageFile(stage);
+  const names = variables.map(({ name }) => name).join(", ");
+  yield* Console.log(`${stage}: .env.${stage} holds ${names}`);
+  if (!options.dryRun && stage === "production" && !options.confirmed)
+    return yield* new StageError({
+      message:
+        "up production writes production's configuration only with --confirm production",
+    });
+  if (options.dryRun) {
+    const tag = yield* findTag(websiteOf(stage));
+    const { kept, steps } = yield* readTriggers(stage, tag);
+    const existing =
+      kept === undefined ? {} : yield* triggerVariables(kept.trigger_uuid);
+    const undeclared = undeclaredVariables(variables, existing);
+    const writes = [
+      ...(Option.isNone(tag)
+        ? [`first deploy of ${branchOf(stage)} from this checkout`]
+        : []),
+      ...steps.map(describeStep(stage)),
+      `set ${names}`,
+      ...(undeclared.length > 0 ? [`delete ${undeclared.join(", ")}`] : []),
+      `start a build of ${branchOf(stage)} and wait for it`,
+    ];
+    yield* Console.log(
+      `${stage}: up would\n${writes.map((write) => `  - ${write}`).join("\n")}`,
+    );
+    return;
+  }
+  const trigger = yield* ensureTrigger(
+    stage,
+    yield* ensureWebsite(stage, variables),
+  );
+  yield* syncVariables(trigger, variables);
+  yield* build(stage, trigger);
+  yield* Console.log(`${stage}: up`);
+});
+
+/** Alchemy's environment for `run`: the file's values as Builds passes them, and the run's reason. */
+const alchemyEnv = (variables: readonly StageVariable[], run: StageRun) => ({
+  ...Object.fromEntries(
+    variables.map(({ name, value }) => [name, Redacted.value(value)]),
+  ),
+  [STAGE_RUN]: run,
+});
+
+/**
+ * Runs Alchemy in the app's root as `run`, its output shown as it comes. Values go only in its
+ * environment, never on argv.
+ */
 const alchemy = Effect.fn("DeployedStage.alchemy")(function* (
   args: readonly string[],
   run: StageRun,
+  variables: readonly StageVariable[] = [],
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const exitCode = yield* spawner
@@ -490,7 +824,7 @@ const alchemy = Effect.fn("DeployedStage.alchemy")(function* (
         stdin: "ignore",
         stdout: "inherit",
         stderr: "inherit",
-        env: { [STAGE_RUN]: run },
+        env: alchemyEnv(variables, run),
         extendEnv: true,
       }),
     )
@@ -503,8 +837,26 @@ const alchemy = Effect.fn("DeployedStage.alchemy")(function* (
     });
 });
 
-/** `alchemy plan`'s output, captured. It holds no stage config values: without `--detailed` it names resources only. */
-const plan = Effect.fn("DeployedStage.plan")(function* (stage: Deployed) {
+/**
+ * Whether an `alchemy plan` replaces the Website Worker. A replaced Worker gets a new tag, and
+ * Cloudflare deletes the trigger with the old one. Alchemy prints a resource's line as
+ * `[<FQN>] <action>`, after its log prefix `[<time>] <LEVEL>: `.
+ *
+ * @see `formatPlan` in Alchemy's `src/Cli/LoggingCli.ts` and `prettyLine` in `src/Util/ConsoleSink.ts`
+ */
+export const replacesWebsite = (plan: string) =>
+  /^(?:\[[\d:.]+\] [A-Z]+: )?\[Website\] replace\b/mu.test(
+    stripVTControlCharacters(plan),
+  );
+
+/**
+ * `alchemy plan`'s output, captured, run with the file's values in its environment as Builds would
+ * run the deploy. Without `--detailed` it names resources only, never values.
+ */
+const plan = Effect.fn("DeployedStage.plan")(function* (
+  stage: Deployed,
+  variables: readonly StageVariable[],
+) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const failed = () => new StageError({ message: "cannot run alchemy plan" });
   const handle = yield* spawner
@@ -512,7 +864,7 @@ const plan = Effect.fn("DeployedStage.plan")(function* (stage: Deployed) {
       ChildProcess.make("alchemy", ["plan", "--stage", stage], {
         cwd: ROOT,
         stdin: "ignore",
-        env: { NO_COLOR: "1", [STAGE_RUN]: "check" satisfies StageRun },
+        env: { ...alchemyEnv(variables, "check"), NO_COLOR: "1" },
         extendEnv: true,
       }),
     )
@@ -531,18 +883,24 @@ const plan = Effect.fn("DeployedStage.plan")(function* (stage: Deployed) {
   };
 }, Effect.scoped);
 
+const LatestBuilds = Schema.Array(
+  Schema.Struct({
+    build_uuid: Schema.String,
+    build_outcome: Schema.NullOr(Schema.String),
+  }),
+);
+
 export const check = Effect.fn("DeployedStage.check")(function* (
   stage: Deployed,
 ) {
+  const variables = yield* readStageFile(stage);
   const problems: string[] = [];
-  const planned = yield* plan(stage);
+  const planned = yield* plan(stage, variables);
   if (planned.ok) {
-    yield* Console.log(
-      `${stage}: plan succeeds, so the stage config record decodes`,
-    );
+    yield* Console.log(`${stage}: plan succeeds`);
     if (replacesWebsite(planned.output))
       yield* Console.error(
-        `stage: warning: the plan replaces the Website Worker, which deletes its trigger; run vp run stage trigger ${stage} after the deploy`,
+        `stage: warning: the plan replaces the Website Worker, which deletes its trigger; run vp run stage up ${stage} after the deploy`,
       );
   } else {
     yield* Console.error(
@@ -552,50 +910,54 @@ export const check = Effect.fn("DeployedStage.check")(function* (
   }
   const tag = yield* findTag(websiteOf(stage));
   if (Option.isNone(tag)) problems.push(`${websiteOf(stage)} does not exist`);
-  else problems.push(...(yield* triggerProblems(stage, tag.value)));
+  else {
+    const { kept, steps } = yield* readTriggers(stage, tag);
+    problems.push(
+      ...steps.map((step) => `it needs to ${describeStep(stage)(step)}`),
+    );
+    if (kept !== undefined) {
+      problems.push(
+        ...variableProblems(
+          variables,
+          yield* triggerVariables(kept.trigger_uuid),
+        ),
+      );
+      const [latest] = yield* cf([
+        "builds",
+        "list",
+        "--external-script-id",
+        tag.value,
+        "--per-page",
+        "1",
+      ]).pipe(Effect.flatMap(decodeJson(LatestBuilds, "cf builds list")));
+      if (latest === undefined) problems.push("no build has run");
+      else if (latest.build_outcome === "success")
+        yield* Console.log(`${stage}: build ${latest.build_uuid} succeeded`);
+      else
+        problems.push(
+          `the latest build ${latest.build_uuid} ended ${latest.build_outcome ?? "without an outcome yet"}`,
+        );
+    }
+  }
   if (problems.length > 0)
     return yield* new StageError({
-      message: `${stage}: ${problems.join("; ")}`,
+      message: `${stage}: ${problems.join("; ")}. Run vp run stage up ${stage}`,
     });
-  yield* Console.log(`${stage}: the trigger is canonical`);
+  yield* Console.log(
+    `${stage}: the trigger is canonical and holds every field of .env.${stage}`,
+  );
 });
 
 const reset = Effect.fn("DeployedStage.reset")(function* (
   stage: ResettableDeployed,
 ) {
+  yield* readStageFile(stage);
+  // The destroy leaves no Website, so `up` will need a first deploy from this checkout: check it
+  // before destroying anything.
+  yield* requireBranchCheckout(stage);
   yield* alchemy(["destroy", "--stage", stage, "--yes"], "reset");
-  yield* alchemy(["deploy", "--stage", stage, "--yes"], "reset");
-  yield* ensureTrigger(stage, false);
-  yield* Console.log(`${stage}: reset`);
+  yield* up(stage, { dryRun: false, confirmed: false });
 });
-
-/** Deploys from this checkout a stage whose Website has no trigger, so no push can deploy it yet. */
-const bootstrap = Effect.fn("DeployedStage.bootstrap")(function* (
-  stage: Deployed,
-) {
-  const tag = yield* findTag(websiteOf(stage));
-  if (Option.isSome(tag) && (yield* listTriggers(tag.value)).length > 0)
-    return yield* new StageError({
-      message: `${websiteOf(stage)} has a trigger, so ${stage} deploys from ${branchOf(stage)}: push there. Check the trigger with vp run stage check ${stage}`,
-    });
-  yield* Console.error(
-    `stage: bootstrapping ${stage} from this checkout; run vp run stage trigger ${stage} next`,
-  );
-  yield* alchemy(["deploy", "--stage", stage, "--yes"], "bootstrap");
-});
-
-/** Saves `.env.<stage>` as the stage's config record; a deploy reads the record, never the file. */
-export const writeStageConfig = Effect.fn("DeployedStage.writeStageConfig")(
-  function* (stage: Deployed) {
-    yield* alchemy(
-      ["deploy", "--config", STAGE_CONFIG_STACK, "--stage", stage, "--yes"],
-      "config",
-    );
-    yield* Console.log(
-      `${stage}: wrote the stage config record from .env.${stage}; deploy to use it`,
-    );
-  },
-);
 
 const toUserError = (error: StageError) =>
   new CliError.UserError({ cause: error, userMessage: error.message });
@@ -604,29 +966,37 @@ const stageArgument = Argument.Literals("stage", Deployed.literals).pipe(
   Argument.withDescription("staging or production"),
 );
 
+const upCommand = Command.make(
+  "up",
+  {
+    stage: stageArgument,
+    dryRun: Flag.Boolean("dry-run").pipe(
+      Flag.withDescription("Read and print what up would write, names only"),
+      Flag.withDefault(false),
+    ),
+    confirm: Flag.String("confirm").pipe(
+      Flag.withDescription("production, to let up write production"),
+      Flag.optional,
+    ),
+  },
+  ({ stage, dryRun, confirm }) =>
+    up(stage, {
+      dryRun,
+      confirmed: Option.contains(confirm, "production"),
+    }).pipe(Effect.mapError(toUserError)),
+).pipe(
+  Command.withDescription(
+    "Make the stage match .env.<stage>: the Website (a first deploy from this checkout, clean and at the stage's branch on origin, when it has none), its canonical trigger, the trigger's variables, and a build of the stage's branch.",
+  ),
+);
+
 const checkCommand = Command.make(
   "check",
   { stage: stageArgument },
   ({ stage }) => check(stage).pipe(Effect.mapError(toUserError)),
 ).pipe(
   Command.withDescription(
-    "Read only: whether the plan succeeds (so the stage config record decodes) and replaces the Website, and whether the trigger is canonical.",
-  ),
-);
-
-const triggerCommand = Command.make(
-  "trigger",
-  {
-    stage: stageArgument,
-    dryRun: Flag.Boolean("dry-run").pipe(
-      Flag.withDescription("Print each write request instead of sending it"),
-    ),
-  },
-  ({ stage, dryRun }) =>
-    ensureTrigger(stage, dryRun).pipe(Effect.mapError(toUserError)),
-).pipe(
-  Command.withDescription(
-    "Make the stage's Workers Builds trigger canonical, creating it if the Website has none.",
+    "Read only: whether the plan succeeds and replaces the Website, the trigger is canonical, its variables match .env.<stage> by name, and the latest build succeeded.",
   ),
 );
 
@@ -653,27 +1023,7 @@ const resetCommand = Command.make(
     ).pipe(Effect.mapError(toUserError)),
 ).pipe(
   Command.withDescription(
-    "Destroy staging, deleting its D1 and Durable Object data, deploy it again and recreate its trigger.",
-  ),
-);
-
-const configCommand = Command.make(
-  "config",
-  { stage: stageArgument },
-  ({ stage }) => writeStageConfig(stage).pipe(Effect.mapError(toUserError)),
-).pipe(
-  Command.withDescription(
-    "Write the stage config record from .env.<stage>, the record's only source.",
-  ),
-);
-
-const bootstrapCommand = Command.make(
-  "bootstrap",
-  { stage: stageArgument },
-  ({ stage }) => bootstrap(stage).pipe(Effect.mapError(toUserError)),
-).pipe(
-  Command.withDescription(
-    "Owner only: deploy from this checkout a stage whose Website has no trigger yet.",
+    "Destroy staging, deleting its D1 and Durable Object data, then run up staging.",
   ),
 );
 
@@ -681,15 +1031,9 @@ const bootstrapCommand = Command.make(
 if (import.meta.main) {
   Command.make("stage").pipe(
     Command.withDescription(
-      "Check, configure, trigger, reset and bootstrap staging and production.",
+      "Set up, check and reset staging and production's Workers Builds deploys.",
     ),
-    Command.withSubcommands([
-      checkCommand,
-      configCommand,
-      triggerCommand,
-      resetCommand,
-      bootstrapCommand,
-    ]),
+    Command.withSubcommands([upCommand, checkCommand, resetCommand]),
     Command.run({ version: "1.0.0" }),
     Effect.provide(NodeServices.layer),
     NodeRuntime.runMain,

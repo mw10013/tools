@@ -1,24 +1,27 @@
-import * as Console from "effect/Console";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Redacted from "effect/Redacted";
-import * as Sink from "effect/Sink";
-import * as Stream from "effect/Stream";
-import { describe, expect, it } from "vite-plus/test";
+import * as Schema from "effect/Schema";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { STAGE_RUN } from "#devkit/cloudflare/stage.ts";
-import { APP_NAME, ROOT } from "#devkit/core/app.ts";
+import { APP_NAME } from "#devkit/core/app.ts";
 
 import {
   canonicalTrigger,
-  check,
-  ensureTrigger,
+  ensureWebsite,
   replacesWebsite,
-  STAGE_CONFIG_STACK,
+  stageVariables,
   type Trigger,
   triggerDrift,
-  writeStageConfig,
+  triggerPlan,
+  undeclaredVariables,
+  variableProblems,
 } from "./deployed-stage.ts";
 
 const TOKEN = "9faa0f15-edb6-4265-aa27-2f944dd4c14e";
@@ -124,125 +127,253 @@ describe("replacesWebsite", () => {
   });
 });
 
-const TAG = "c028ea6f87854c129e76a0f7a2e3251b";
+describe("triggerPlan", () => {
+  const canonical = canonicalTrigger("production", TOKEN);
 
-/**
- * A spawner that answers each command line from `outputs` and records what ran, with the
- * environment it was given; an unlisted command fails, so a write would show.
- */
-const fakeSpawner = (outputs: Record<string, string>) => {
-  const ran: {
-    line: string;
-    stageRun: unknown;
-  }[] = [];
-  const spawner = ChildProcessSpawner.make((command) =>
-    Effect.sync(() => {
-      if (command._tag !== "StandardCommand")
-        throw new Error("unexpected piped command");
-      const line = [command.command, ...command.args]
-        .map((word) => (Redacted.isRedacted(word) ? "<redacted>" : word))
-        .join(" ");
-      ran.push({ line, stageRun: command.options.env?.[STAGE_RUN] });
-      const out = outputs[line];
-      return ChildProcessSpawner.makeHandle({
-        pid: ChildProcessSpawner.ProcessId(1),
-        exitCode: Effect.succeed(
-          ChildProcessSpawner.ExitCode(out === undefined ? 1 : 0),
-        ),
-        isRunning: Effect.succeed(false),
-        kill: () => Effect.void,
-        stdin: Sink.drain,
-        stdout: Stream.make(new TextEncoder().encode(out ?? "")),
-        stderr: Stream.empty,
-        all: Stream.empty,
-        getInputFd: () => Sink.drain,
-        getOutputFd: () => Stream.empty,
-        unref: Effect.succeed(Effect.void),
-      });
-    }),
-  );
-  return { spawner, ran };
-};
-
-/** A Cloudflare account whose staging Website has one canonical trigger and a plan that succeeds. */
-const canonicalAccount = () => {
-  const canonical = canonicalTrigger("staging", TOKEN);
-  return fakeSpawner({
-    [`cf workers scripts search --name ${APP_NAME}-website-staging`]:
-      JSON.stringify([{ id: TAG, script_name: `${APP_NAME}-website-staging` }]),
-    "cf builds tokens list": JSON.stringify([
-      {
-        build_token_uuid: TOKEN,
-        build_token_name: "Workers Builds - 2026-05-31 17:29",
-      },
-    ]),
-    [`git -C ${ROOT} remote get-url origin`]:
-      "git@github.com:mw10013/baton.git\n",
-    [`cf builds triggers list --external-script-id ${TAG}`]: JSON.stringify([
-      listed(canonical),
-    ]),
-    "cf builds triggers environment-variables list --trigger-uuid 2aad0c41-2dfb-4356-8af6-3d8a705c92fd":
-      "{}",
-    [`cf builds workers get ${TAG}`]: JSON.stringify({
-      previews_enabled: false,
-    }),
-    "alchemy plan --stage staging": PLAN,
+  it("is empty for one canonical trigger with previews off", () => {
+    const trigger = listed(canonical);
+    expect(triggerPlan(canonical, "baton", [trigger], false)).toStrictEqual({
+      kept: trigger,
+      steps: [],
+    });
   });
-};
 
-const run = <A, E>(
-  effect: Effect.Effect<A, E, ChildProcessSpawner.ChildProcessSpawner>,
-  spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
-) => {
-  const lines: string[] = [];
-  const console: Console.Console = Object.assign(
-    Object.create(globalThis.console) as Console.Console,
-    {
-      log: (...args: readonly unknown[]) => lines.push(args.join(" ")),
-      error: (...args: readonly unknown[]) => lines.push(args.join(" ")),
-    },
-  );
-  return Effect.runPromise(
-    effect.pipe(
-      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      Effect.provideService(Console.Console, console),
-      Effect.exit,
-    ),
-  ).then((exit) => ({ exit, lines }));
-};
-
-describe("ensureTrigger", () => {
-  it("says a canonical trigger is canonical on a dry run, and writes nothing", async () => {
-    const { spawner, ran } = canonicalAccount();
-    const { exit, lines } = await run(ensureTrigger("staging", true), spawner);
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(lines).toContain("stage: the staging trigger needed no change");
-    expect(lines).toContain(
-      `staging: the trigger on ${APP_NAME}-website-staging is canonical`,
-    );
-    expect(ran.filter(({ line }) => line.includes("--dry-run"))).toStrictEqual(
-      [],
-    );
-  });
-});
-
-describe("check", () => {
-  it("marks its plan as the stage CLI's check, so the app stack lets it run", async () => {
-    const { spawner, ran } = canonicalAccount();
-    const { exit } = await run(check("staging"), spawner);
-    expect(Exit.isSuccess(exit)).toBe(true);
+  it("creates the trigger when the Website has none on the repository", () => {
     expect(
-      ran.find(({ line }) => line.startsWith("alchemy plan"))?.stageRun,
-    ).toBe("check");
+      triggerPlan(canonical, "baton", [], false).steps.map(({ _tag }) => _tag),
+    ).toStrictEqual(["Create"]);
+    const elsewhere = listed({
+      repo_connection: { repo_connection_uuid: "x", repo_name: "other" },
+    });
+    expect(
+      triggerPlan(canonical, "baton", [elsewhere], false).steps.map(
+        ({ _tag }) => _tag,
+      ),
+    ).toStrictEqual(["Create", "Delete"]);
+  });
+
+  it("updates the stage branch's trigger in place, then deletes the rest and turns previews off", () => {
+    const preview = listed({
+      ...canonical,
+      trigger_uuid: "preview",
+      branch_includes: ["*"],
+      branch_excludes: ["production"],
+    });
+    const own = listed();
+    const { kept, steps } = triggerPlan(
+      canonical,
+      "baton",
+      [preview, own],
+      true,
+    );
+    expect(kept).toBe(own);
+    expect(steps).toStrictEqual([
+      {
+        _tag: "Update",
+        trigger: own,
+        settings: ["trigger_name", "deploy_command"],
+      },
+      { _tag: "Delete", trigger: preview },
+      { _tag: "DisablePreviews" },
+    ]);
   });
 });
 
-describe("writeStageConfig", () => {
-  it("deploys the writer stack as the stage CLI's config run, so the state store lets it write", async () => {
-    const line = `alchemy deploy --config ${STAGE_CONFIG_STACK} --stage production --yes`;
-    const { spawner, ran } = fakeSpawner({ [line]: "" });
-    const { exit } = await run(writeStageConfig("production"), spawner);
+const Fields = Schema.Struct({
+  API_KEY: Schema.NonEmptyString,
+  API_SECRET: Schema.Redacted(Schema.String.check(Schema.isPattern(/^sk_/u))),
+});
+
+const SECRET = "sk_s3cr3t-value";
+
+const variablesOf = (file: Record<string, string>) =>
+  Effect.runSyncExit(stageVariables(Fields, file, ".env.staging"));
+
+const failureOf = (exit: Exit.Exit<unknown, unknown>) =>
+  Exit.isFailure(exit) ? String(Cause.squash(exit.cause)) : "";
+
+describe("stageVariables", () => {
+  it("makes one variable per field, a Redacted field a secret, the value the file's raw string", () => {
+    const exit = variablesOf({ API_KEY: "key", API_SECRET: SECRET });
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(ran).toStrictEqual([{ line, stageRun: "config" }]);
+    if (Exit.isFailure(exit)) return;
+    expect(
+      exit.value.map(({ name, value, secret }) => ({
+        name,
+        value: Redacted.value(value),
+        secret,
+      })),
+    ).toStrictEqual([
+      { name: "API_KEY", value: "key", secret: false },
+      { name: "API_SECRET", value: SECRET, secret: true },
+    ]);
+  });
+
+  it("names a missing, invalid or undeclared field, never a value", () => {
+    const message = failureOf(
+      variablesOf({ API_SECRET: "not-a-key", EXTRA: SECRET }),
+    );
+    expect(message).toContain("lacks or has invalid API_KEY, API_SECRET");
+    expect(message).toContain(
+      "holds EXTRA, which stacks/stage-env.ts does not declare",
+    );
+    expect(message).not.toContain(SECRET);
+    expect(message).not.toContain("not-a-key");
+  });
+
+  it("refuses an empty value for a non-empty field", () => {
+    expect(
+      failureOf(variablesOf({ API_KEY: "", API_SECRET: SECRET })),
+    ).toContain("lacks or has invalid API_KEY");
+  });
+});
+
+describe("trigger variables", () => {
+  const exit = variablesOf({ API_KEY: "key", API_SECRET: SECRET });
+  const variables = Exit.isSuccess(exit) ? exit.value : [];
+
+  it("finds the trigger's variables no field declares", () => {
+    expect(
+      undeclaredVariables(variables, {
+        API_KEY: { is_secret: false },
+        OLD: { is_secret: true },
+      }),
+    ).toStrictEqual(["OLD"]);
+  });
+
+  it("reports a missing name, a wrong secrecy and an undeclared name, and nothing when they match", () => {
+    expect(
+      variableProblems(variables, {
+        API_KEY: { is_secret: true },
+        OLD: { is_secret: false },
+      }),
+    ).toStrictEqual([
+      "the trigger holds API_KEY as a secret",
+      "the trigger lacks API_SECRET",
+      "the trigger holds OLD, which no field declares",
+    ]);
+    expect(
+      variableProblems(variables, {
+        API_KEY: { is_secret: false },
+        API_SECRET: { is_secret: true },
+      }),
+    ).toStrictEqual([]);
+  });
+});
+
+/** `cf`, `git` and `alchemy` as `ensureWebsite` calls them, reading and writing files in `$DEVKIT_FAKES`. */
+const FAKES = {
+  cf: `#!/bin/sh
+case "$*" in
+  "workers scripts search --name "*) cat "$DEVKIT_FAKES/scripts.json" ;;
+  *) echo "unexpected cf $*" >&2; exit 1 ;;
+esac
+`,
+  git: `#!/bin/sh
+shift 2
+echo "$*" >> "$DEVKIT_FAKES/git.log"
+case "$*" in
+  "status --porcelain") cat "$DEVKIT_FAKES/status" ;;
+  "fetch origin "*) ;;
+  "rev-parse HEAD") cat "$DEVKIT_FAKES/head" ;;
+  "rev-parse origin/"*) cat "$DEVKIT_FAKES/origin" ;;
+  *) echo "unexpected git $*" >&2; exit 1 ;;
+esac
+`,
+  alchemy: `#!/bin/sh
+echo "$*" > "$DEVKIT_FAKES/alchemy.args"
+echo "$DEVKIT_STAGE_RUN $API_KEY $API_SECRET" > "$DEVKIT_FAKES/alchemy.env"
+cp "$DEVKIT_FAKES/deployed.json" "$DEVKIT_FAKES/scripts.json"
+`,
+};
+
+describe("ensureWebsite", () => {
+  const saved = { path: process.env.PATH, fakes: process.env.DEVKIT_FAKES };
+  let fakes = "";
+  const fake = (file: string) => path.join(fakes, file);
+  const read = (file: string) =>
+    fs.existsSync(fake(file)) ? fs.readFileSync(fake(file), "utf8") : "";
+  const website = (stage: "staging" | "production", id: string) =>
+    JSON.stringify([{ id, script_name: `${APP_NAME}-website-${stage}` }]);
+  const checkout = (state: {
+    status?: string;
+    head?: string;
+    origin?: string;
+  }) => {
+    fs.writeFileSync(fake("status"), state.status ?? "");
+    fs.writeFileSync(fake("head"), state.head ?? "abc123\n");
+    fs.writeFileSync(fake("origin"), state.origin ?? "abc123\n");
+  };
+  const exit = variablesOf({ API_KEY: "key", API_SECRET: SECRET });
+  const variables = Exit.isSuccess(exit) ? exit.value : [];
+  const run = (stage: "staging" | "production") =>
+    Effect.runPromiseExit(
+      ensureWebsite(stage, variables).pipe(Effect.provide(NodeServices.layer)),
+    );
+
+  beforeEach(() => {
+    fakes = fs.mkdtempSync(path.join(os.tmpdir(), "devkit-stage-"));
+    for (const [name, script] of Object.entries(FAKES))
+      fs.writeFileSync(fake(name), script, { mode: 0o755 });
+    fs.writeFileSync(fake("scripts.json"), "[]");
+    fs.writeFileSync(fake("deployed.json"), website("staging", "tag-new"));
+    process.env.PATH = `${fakes}:/usr/bin:/bin`;
+    process.env.DEVKIT_FAKES = fakes;
+  });
+
+  afterEach(() => {
+    process.env.PATH = saved.path;
+    process.env.DEVKIT_FAKES = saved.fakes;
+    fs.rmSync(fakes, { recursive: true, force: true });
+  });
+
+  it("reaches only the fake alchemy", () => {
+    expect(
+      (process.env.PATH ?? "")
+        .split(":")
+        .filter((directory) => fs.existsSync(path.join(directory, "alchemy"))),
+    ).toStrictEqual([fakes]);
+  });
+
+  it("deploys a missing Website from a clean checkout at origin, values in the environment only", async () => {
+    checkout({});
+    const result = await run("staging");
+    expect(Exit.isSuccess(result) && result.value).toBe("tag-new");
+    expect(read("git.log")).toContain("fetch origin main");
+    expect(read("alchemy.args")).toBe("deploy --stage staging --yes\n");
+    expect(read("alchemy.env")).toBe(`up key ${SECRET}\n`);
+  });
+
+  it("checks production's checkout against origin/production", async () => {
+    checkout({});
+    fs.writeFileSync(fake("deployed.json"), website("production", "tag-prod"));
+    const result = await run("production");
+    expect(Exit.isSuccess(result) && result.value).toBe("tag-prod");
+    expect(read("git.log")).toContain("rev-parse origin/production");
+    expect(read("alchemy.args")).toBe("deploy --stage production --yes\n");
+  });
+
+  it("refuses a dirty checkout before deploying", async () => {
+    checkout({ status: " M src/app.ts\n" });
+    expect(failureOf(await run("staging"))).toContain(
+      "has uncommitted changes; commit or stash them",
+    );
+    expect(read("alchemy.args")).toBe("");
+  });
+
+  it("refuses a checkout that is not origin's branch", async () => {
+    checkout({ head: "abc123\n", origin: "def456\n" });
+    expect(failureOf(await run("staging"))).toContain(
+      "HEAD abc123 is not origin/main def456; check out main at origin/main (git switch main, then git pull --ff-only if behind or git push if ahead)",
+    );
+    expect(read("alchemy.args")).toBe("");
+  });
+
+  it("deploys nothing and reads no checkout when the Website exists", async () => {
+    fs.writeFileSync(fake("scripts.json"), website("staging", "tag-old"));
+    const result = await run("staging");
+    expect(Exit.isSuccess(result) && result.value).toBe("tag-old");
+    expect(read("git.log")).toBe("");
+    expect(read("alchemy.args")).toBe("");
   });
 });

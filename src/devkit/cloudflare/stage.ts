@@ -35,12 +35,7 @@ export const branchOf = (stage: Deployed): "main" | "production" =>
  */
 export const STAGE_RUN = "DEVKIT_STAGE_RUN";
 
-export const StageRun = Schema.Literals([
-  "bootstrap",
-  "config",
-  "reset",
-  "check",
-]);
+export const StageRun = Schema.Literals(["check", "reset", "up"]);
 export type StageRun = typeof StageRun.Type;
 
 /** Only disposable deployed data may be destroyed by the reset command. */

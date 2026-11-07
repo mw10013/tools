@@ -1,19 +1,16 @@
 /**
- * What an app's Alchemy stacks share to keep a {@link Deployed} stage's configuration in one
- * place: the providers, the state store, the `secrets` policy, and the stage config record.
+ * What an app's Alchemy stacks share on a {@link Deployed} stage: the providers, the state store,
+ * the `secrets` policy, and the check that the stage's environment holds every field the app
+ * declares ({@link requireStageEnv}).
  *
- * A deployed stage's externally issued values (API keys, secrets, ids) live in one record, the
- * output of the app's stage config stack in Cloudflare state. Its writer reads them from
- * `.env.<stage>` and nothing else ({@link readStageFile}); the app stack reads them back through
- * {@link decodeStageConfig}, so a missing record or field fails the plan. Workers Builds deploys
- * from that record and never sees the file.
+ * A deployed stage's values are its Workers Builds trigger's variables, which `vp run stage up`
+ * syncs from `.env.<stage>` and Builds puts in the deploy's environment.
  *
  * {@link stageState} admits a run on a deployed stage only from Workers Builds on the stage's
  * branch or from the `stage` CLI, and only the Alchemy command that run is for
  * ({@link deployedRunRefusal}). Alchemy builds the state store on every command that addresses a
  * stage, `destroy` included, which never runs the stack's program; so a hand-run
- * `alchemy deploy`, `plan` or `destroy --stage production` dies before it reads state. The app
- * stack also opens with {@link guardShell}.
+ * `alchemy deploy`, `plan` or `destroy --stage production` dies before it reads state.
  *
  * Stack-time only: imports Alchemy, so no Worker bundle may carry it. {@link Deployed} and the
  * other names a bundle needs stay in `stage.ts`.
@@ -21,17 +18,15 @@
  * @see `~/.claude/skills/coder/references/deployed-stages.md` for the lifecycle these enforce.
  * @module
  */
-import path from "node:path";
-
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Alchemy from "alchemy";
-import * as Output from "alchemy/Output";
 import * as Config from "effect/Config";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
 import {
@@ -42,7 +37,6 @@ import {
   STAGE_RUN,
   StageRun,
 } from "#devkit/cloudflare/stage.ts";
-import { ROOT } from "#devkit/core/app.ts";
 
 const isDeployed = Schema.is(Deployed);
 
@@ -84,7 +78,7 @@ export const refuseUnsafeNuke: Effect.Effect<void> = Effect.suspend(() =>
 );
 
 /**
- * The `providers` option of every app stack and its stage config writer: Cloudflare's, behind
+ * The `providers` option of every app stack: Cloudflare's, behind
  * {@link refuseUnsafeNuke}. Nuke builds a stack's providers and nothing else, no stage and no
  * state store (Alchemy's `src/Alchemist/Nuke.ts`), so {@link guardDeployedRun} never runs, and it
  * deletes across the whole account, not one stage.
@@ -95,7 +89,7 @@ export const stageProviders = Layer.unwrap(
 
 /**
  * The `secrets` option of every app stack. A per-developer stage reads `.env`, then the shell. A
- * {@link Deployed} stage reads no file: its values come from the stage config record. Its list
+ * {@link Deployed} stage reads no file: Workers Builds puts its trigger's variables in the shell. Its list
  * is empty rather than `ProcessEnv({ disabled: true })` because Alchemy appends the shell to any
  * list that does not name it, and the providers are built under the same configuration, so the
  * shell is where Workers Builds hands the deploy its Cloudflare credentials.
@@ -104,150 +98,6 @@ export const stageProviders = Layer.unwrap(
  */
 export const deployedSecrets: Alchemy.StackSecrets = ({ stage }) =>
   isDeployed(stage) ? [] : [Alchemy.Secrets.DotEnv()];
-
-export class NotDeployedStageError extends Schema.TaggedError<NotDeployedStageError>()(
-  "NotDeployedStageError",
-  { stage: Schema.String },
-) {
-  override get message() {
-    return `this stack is for ${Deployed.literals.join(", ")} only, not stage "${this.stage}"`;
-  }
-}
-
-/** The stack's stage when it is {@link Deployed}; any other stage dies before anything is written. */
-export const requireDeployed: Effect.Effect<Deployed, never, Alchemy.Stage> =
-  Effect.flatMap(Alchemy.Stage, (stage) =>
-    isDeployed(stage)
-      ? Effect.succeed(stage)
-      : Effect.die(new NotDeployedStageError({ stage })),
-  );
-
-/**
- * A stage config record's schema: a struct whose fields are named after the bindings they become,
- * and which decodes with no services, since neither a dotenv file nor Alchemy state can supply one.
- */
-export type StageConfigSchema = Schema.Struct<Schema.Struct.Fields> &
-  Schema.Codec<unknown>;
-
-/**
- * The fields that do not parse on their own, by name. A failure's own message can quote the value
- * that failed, a secret included, so callers report these names instead.
- */
-const invalidFields = (
-  schema: StageConfigSchema,
-  parses: (field: StageConfigSchema) => Effect.Effect<unknown, unknown>,
-) =>
-  Effect.filter(Object.keys(schema.fields), (name) =>
-    // A struct of one of `schema`'s fields decodes with `schema`'s services: none.
-    parses(
-      Schema.Struct({ [name]: schema.fields[name] }) as StageConfigSchema,
-    ).pipe(Effect.match({ onFailure: () => true, onSuccess: () => false })),
-  );
-
-const sourceError = (message: string) =>
-  new Config.ConfigError(new ConfigProvider.SourceError({ message }));
-
-/**
- * `schema`'s record parsed from the dotenv `file` and nothing else, so a variable in the shell
- * cannot replace a value and a field missing from the file fails rather than falling back. The
- * error names the fields, never values.
- */
-export const parseStageFile = <S extends StageConfigSchema>(
-  schema: S,
-  file: string,
-) =>
-  Effect.gen(function* () {
-    const provider = yield* ConfigProvider.fromDotEnv({ path: file }).pipe(
-      Effect.mapError(() => sourceError(`cannot read ${file}`)),
-    );
-    return yield* Config.schema<S["Type"]>(schema)
-      .parse(provider)
-      .pipe(
-        Effect.catchTag("ConfigError", () =>
-          invalidFields(schema, (field) =>
-            Config.schema(field).parse(provider),
-          ).pipe(
-            Effect.flatMap((names) =>
-              Effect.fail(
-                sourceError(
-                  `${file} is missing or has invalid values for: ${names.join(", ")}`,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-  });
-
-/**
- * The writer stack's body: the {@link Deployed} stage's record, {@link parseStageFile parsed}
- * from `.env.<stage>` at the app's root.
- *
- * @example
- * export default StageConfig.make(
- *   { providers: stageProviders, state: stageState, secrets: deployedSecrets },
- *   readStageFile(StageConfigFields),
- * );
- */
-export const readStageFile = <S extends StageConfigSchema>(schema: S) =>
-  Effect.flatMap(requireDeployed, (stage) =>
-    parseStageFile(schema, path.join(ROOT, `.env.${stage}`)),
-  ).pipe(Effect.withSpan("DeployedStack.readStageFile"));
-
-export class StageConfigRecordError extends Schema.TaggedError<StageConfigRecordError>()(
-  "StageConfigRecordError",
-  { fields: Schema.Array(Schema.String) },
-) {
-  override get message() {
-    return `the stage config record is missing or has invalid values for: ${this.fields.join(", ")}. Add them to .env.<stage>, run vp run stage config <stage>, then deploy again`;
-  }
-}
-
-/**
- * The stage config record, decoded field by field against `schema`, so a field the record lacks
- * fails the plan instead of reading as `undefined`. A missing record already fails it: Alchemy
- * refuses a reference to a stack it has no output for.
- *
- * The record holds `schema`'s Type side: Alchemy writes the writer's output to state with each
- * `Redacted` wrapped as `{ "__redacted__": value }` and revives it as a `Redacted` on read, so a
- * `Schema.Redacted` field comes back `Redacted` and a transformed field comes back transformed.
- * Hence the decode runs against {@link Schema.toType}.
- *
- * @see `encodeState` and `reviveState` in Alchemy's `src/State/StateEncoding.ts`
- * @example
- * export const stageConfig = Effect.map(StageConfig, decodeStageConfig(StageConfigFields));
- */
-export const decodeStageConfig = <S extends StageConfigSchema>(schema: S) => {
-  const decode = decodeRecord(schema);
-  return (record: Alchemy.Output<unknown>) =>
-    record.pipe(
-      Output.mapEffect((value: unknown) => Effect.orDie(decode(value))),
-    ) as Output.ToOutput<S["Type"]>;
-};
-
-/** One stored record decoded as {@link decodeStageConfig} does, failing with the fields that do not decode. */
-export const decodeRecord = <S extends StageConfigSchema>(schema: S) => {
-  const decode = Schema.decodeUnknownEffect(Schema.toType(schema));
-  return (value: unknown) =>
-    decode(value).pipe(
-      Effect.catchTag("SchemaError", () =>
-        invalidFields(schema, (field) =>
-          Schema.decodeUnknownEffect(Schema.toType(field))(value),
-        ).pipe(
-          Effect.flatMap((fields) =>
-            Effect.fail(new StageConfigRecordError({ fields })),
-          ),
-        ),
-      ),
-    );
-};
-
-/** The record's field names that `env` also holds. */
-export const shellOverrides = (
-  schema: StageConfigSchema,
-  env: Readonly<Record<string, string | undefined>>,
-): readonly string[] =>
-  Object.keys(schema.fields).filter((name) => env[name] !== undefined);
 
 /** The variables a run on a {@link Deployed} stage is judged by. */
 export interface DeployedRunEnv {
@@ -286,8 +136,8 @@ type DeployedRun = "builds" | StageRun;
 
 /**
  * What each run may do. Builds only deploys; each `stage` subcommand runs the one command it is
- * for. Only `reset` destroys, and only a {@link ResettableDeployed} stage, so nothing destroys
- * production.
+ * for, `up` the stage's first deploy from a checkout at the stage's branch. Only `reset` destroys,
+ * and only a {@link ResettableDeployed} stage, so nothing destroys production.
  */
 const permits: Record<
   DeployedRun,
@@ -297,13 +147,9 @@ const permits: Record<
   }
 > = {
   builds: { commands: ["deploy"], stages: Deployed.literals },
-  bootstrap: { commands: ["deploy"], stages: Deployed.literals },
-  config: { commands: ["deploy"], stages: Deployed.literals },
   check: { commands: ["plan"], stages: Deployed.literals },
-  reset: {
-    commands: ["destroy", "deploy"],
-    stages: ResettableDeployed.literals,
-  },
+  reset: { commands: ["destroy"], stages: ResettableDeployed.literals },
+  up: { commands: ["deploy"], stages: Deployed.literals },
 };
 
 const isStageRun = Schema.is(StageRun);
@@ -315,7 +161,8 @@ const ONLY_RESET_DESTROYS =
  * Why Alchemy must not run `command` on `stage` here, or `None`. Workers Builds deploys the stage
  * from its branch; the `stage` CLI names its reason in {@link STAGE_RUN}; each may run only what
  * {@link permits} gives it. Anywhere else a deploy would ship whatever the checkout holds, not
- * what the branch holds, and a destroy would delete the stage's data.
+ * what the branch holds (`up` deploys only from a clean checkout at the branch), and a destroy
+ * would delete the stage's data.
  */
 export const deployedRunRefusal = (
   stage: Deployed,
@@ -334,7 +181,7 @@ export const deployedRunRefusal = (
     env.WORKERS_CI_BRANCH !== branch
   )
     return Option.some(
-      `${stage} deploys from branch ${branch}, not ${env.WORKERS_CI_BRANCH ?? "(none)"}. Point the trigger at ${branch} with vp run stage trigger ${stage}`,
+      `${stage} deploys from branch ${branch}, not ${env.WORKERS_CI_BRANCH ?? "(none)"}. Point the trigger at ${branch} with vp run stage up ${stage}`,
     );
   const run: DeployedRun | undefined =
     reason ?? (env.WORKERS_CI === "1" ? "builds" : undefined);
@@ -342,7 +189,7 @@ export const deployedRunRefusal = (
     return Option.some(
       command === "destroy"
         ? `${stage} is not destroyed by hand: ${ONLY_RESET_DESTROYS}`
-        : `${stage} runs only in Workers Builds: push to ${branch} to deploy it. Plan it with vp run stage check ${stage}; the owner deploys a stage with no trigger yet with vp run stage bootstrap ${stage}`,
+        : `${stage} runs only in Workers Builds: push to ${branch} to deploy it. Plan it with vp run stage check ${stage}`,
     );
   const permit = permits[run];
   if (
@@ -383,35 +230,86 @@ export const guardDeployedRun: Effect.Effect<void, never, Alchemy.Stage> =
       : Effect.void;
   });
 
-export class ShellHoldsStageConfigError extends Schema.TaggedError<ShellHoldsStageConfigError>()(
-  "ShellHoldsStageConfigError",
-  { names: Schema.Array(Schema.String) },
+/**
+ * An app's deployed-stage fields, the default export of `stacks/stage-env.ts`: one field per
+ * variable, named after it, a secret as `Schema.Redacted(...)`. Each decodes from the variable's
+ * string with no services.
+ */
+export type StageFields = Schema.Struct<Schema.Struct.Fields> &
+  Schema.Codec<unknown>;
+
+/** Which of `fields` `env` lacks or holds an invalid value for, and which are secrets. */
+export interface StageEnvCheck {
+  readonly invalid: readonly string[];
+  readonly secrets: readonly string[];
+}
+
+/**
+ * Parses each of `fields` from `env` as `Config` reads it in a Worker. Names only: a parse
+ * failure's own message can quote the value, a secret included.
+ */
+export const checkStageEnv = (
+  fields: StageFields,
+  env: Readonly<Record<string, string | undefined>>,
+): Effect.Effect<StageEnvCheck> => {
+  const provider = ConfigProvider.fromEnv({
+    env: Object.fromEntries(
+      Object.entries(env).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined,
+      ),
+    ),
+  });
+  return Effect.forEach(Object.keys(fields.fields), (name) =>
+    Config.schema(fields.fields[name] as StageFields, name)
+      .parse(provider)
+      .pipe(
+        Effect.map((value) => ({ name, secret: Redacted.isRedacted(value) })),
+        Effect.option,
+        Effect.map((parsed) => ({ name, parsed })),
+      ),
+  ).pipe(
+    Effect.map((results) => ({
+      invalid: results
+        .filter(({ parsed }) => Option.isNone(parsed))
+        .map(({ name }) => name),
+      secrets: results
+        .filter(({ parsed }) => Option.exists(parsed, ({ secret }) => secret))
+        .map(({ name }) => name),
+    })),
+  );
+};
+
+export class StageEnvMissingError extends Schema.TaggedError<StageEnvMissingError>()(
+  "StageEnvMissingError",
+  { stage: Deployed, names: Schema.Array(Schema.String) },
 ) {
   override get message() {
-    return `the shell sets ${this.names.join(", ")}, which a deployed stage takes only from its stage config record. Unset them and run again`;
+    return `${this.stage}'s environment lacks or has invalid ${this.names.join(", ")}. Add them to .env.${this.stage} and run vp run stage up ${this.stage}`;
   }
 }
 
 /**
- * The app stack's first step; the stage config writer never calls it. On a {@link Deployed} stage
- * it dies when the shell sets any of the record's field names: a deployed stage's configuration is
- * the shell alone ({@link deployedSecrets}), and Alchemy binds what a Worker's init reads from it
- * as a secret, so such a variable would reach the Worker beside the record. Names only: values
- * are never read.
+ * The app stack's first step. On a {@link Deployed} stage it dies unless the environment holds
+ * every one of `fields`, so a Builds deploy missing a trigger variable fails instead of binding
+ * nothing where a Worker reads `Config.option`.
  *
  * @example
- * export default Alchemy.Stack("app", { providers, state: stageState, secrets: deployedSecrets },
+ * export default Alchemy.Stack("app", { providers: stageProviders, state: stageState, secrets: deployedSecrets },
  *   Effect.gen(function* () {
- *     yield* guardShell(StageConfigFields);
+ *     yield* requireStageEnv(StageEnv);
  *     // ...
  *   }),
  * );
  */
-export const guardShell = (schema: StageConfigSchema) =>
+export const requireStageEnv = (
+  fields: StageFields,
+): Effect.Effect<void, never, Alchemy.Stage> =>
   Effect.gen(function* () {
     const stage = yield* Alchemy.Stage;
     if (!isDeployed(stage)) return;
-    const names = shellOverrides(schema, process.env);
-    if (names.length > 0)
-      return yield* Effect.die(new ShellHoldsStageConfigError({ names }));
+    const { invalid } = yield* checkStageEnv(fields, process.env);
+    if (invalid.length > 0)
+      return yield* Effect.die(
+        new StageEnvMissingError({ stage, names: invalid }),
+      );
   });
