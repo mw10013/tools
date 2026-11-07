@@ -149,8 +149,13 @@ describe("the built package", () => {
     }
   });
 
-  it("imports only Node, Effect and its declared peers", () => {
+  it("imports only Node, Effect and its declared peers, and bundles no dependency", () => {
     const peers = Object.keys(manifest.peerDependencies);
+    expect(
+      filesUnder(inOutput("dist")).filter((file) =>
+        file.includes("node_modules"),
+      ),
+    ).toEqual([]);
     const undeclared = filesUnder(inOutput("dist")).flatMap((file) =>
       specifiersOf(file)
         .filter(
