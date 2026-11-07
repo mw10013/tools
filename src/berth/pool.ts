@@ -31,7 +31,7 @@ export type PoolPrefix = typeof PoolPrefix.Type;
 const POOL_NAMES = 100;
 
 // Not `Schema.isUnique`: its message does not name the store listed twice.
-const listedOnce = Schema.makeFilter<ReadonlyArray<StoreDomain>>(
+const listedOnce = Schema.makeFilter<readonly StoreDomain[]>(
   (stores) => {
     const twice = stores.filter(
       (store, index) => stores.indexOf(store) !== index,
@@ -77,7 +77,7 @@ export interface OrgStore {
 export const domainOf = (name: string): StoreDomain =>
   StoreDomain.make(`${name}.myshopify.com`);
 
-export const poolNames = (prefix: PoolPrefix): ReadonlyArray<string> =>
+export const poolNames = (prefix: PoolPrefix): readonly string[] =>
   Array.from(
     { length: POOL_NAMES },
     (_, index) => `${prefix}${String(index).padStart(2, "0")}`,
@@ -116,9 +116,9 @@ export class PoolNamesExhaustedError extends Schema.TaggedError<PoolNamesExhaust
 
 export interface PoolPlan {
   /** Org stores at a free pool name, in name order: a run that crashed after a create left them. */
-  readonly adopt: ReadonlyArray<StoreDomain>;
+  readonly adopt: readonly StoreDomain[];
   /** Names to create, in order, after the adoptions. */
-  readonly create: ReadonlyArray<string>;
+  readonly create: readonly string[];
 }
 
 const isFit = (store: OrgStore) =>
@@ -126,15 +126,15 @@ const isFit = (store: OrgStore) =>
 
 /** The pool only grows: a `count` at or below the pool's size creates nothing. */
 export const planPool = Effect.fn("Pool.planPool")(function* (input: {
-  readonly listed: ReadonlyArray<StoreDomain>;
-  readonly orgStores: ReadonlyArray<OrgStore>;
+  readonly listed: readonly StoreDomain[];
+  readonly orgStores: readonly OrgStore[];
   readonly prefix: PoolPrefix;
   readonly count: number;
 }): Effect.fn.Return<PoolPlan, PoolStoresUnfitError | PoolNamesExhaustedError> {
   const byDomain = new Map(
     input.orgStores.map((store) => [store.domain, store]),
   );
-  const unfit = input.listed.flatMap((domain): ReadonlyArray<UnfitStore> => {
+  const unfit = input.listed.flatMap((domain): readonly UnfitStore[] => {
     const store = handleOf(domain);
     const found = byDomain.get(domain);
     if (found === undefined) return [{ store, reason: "missing" }];

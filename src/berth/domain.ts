@@ -21,7 +21,7 @@ export type EnvName = typeof EnvName.Type;
 
 /** Real (symlinks resolved) and absolute. */
 export const CheckoutPath = Schema.String.check(
-  Schema.isPattern(/^(\/|[A-Za-z]:\\)/u),
+  Schema.isPattern(/^(?:\/|[A-Za-z]:\\)/u),
 ).pipe(Schema.brand("CheckoutPath"));
 export type CheckoutPath = typeof CheckoutPath.Type;
 
@@ -61,7 +61,7 @@ export type Config = typeof Config.Type;
 
 export interface Policy {
   readonly machine: MachineName;
-  readonly stores: ReadonlyArray<StoreDomain>;
+  readonly stores: readonly StoreDomain[];
 }
 
 /**
@@ -121,15 +121,12 @@ export const staleLeases = (
   state: State,
   machine: MachineName,
   gone: ReadonlySet<CheckoutPath>,
-): ReadonlyArray<Lease> =>
+): readonly Lease[] =>
   state.leases.filter(
     (lease) => lease.key.machine === machine && gone.has(lease.key.checkout),
   );
 
-export const release = (
-  state: State,
-  keys: ReadonlyArray<LeaseKey>,
-): State => ({
+export const release = (state: State, keys: readonly LeaseKey[]): State => ({
   ...state,
   leases: state.leases.filter(
     (lease) => !keys.some((key) => sameKey(key, lease.key)),
@@ -156,7 +153,7 @@ export const holderOf = (
 
 export const pickStore = (
   state: State,
-  stores: ReadonlyArray<StoreDomain>,
+  stores: readonly StoreDomain[],
 ): Option.Option<StoreDomain> => {
   const held = holders(state);
   return Option.fromNullishOr(stores.find((domain) => !held.has(domain)));

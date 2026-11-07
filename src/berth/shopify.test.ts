@@ -26,7 +26,7 @@ describe("resultText", () => {
   });
 });
 
-const directories: Array<string> = [];
+const directories: string[] = [];
 const PATH = process.env.PATH;
 afterEach(() => {
   process.env.PATH = PATH;
@@ -119,7 +119,7 @@ describe("ShopifyCli.layer failures", () => {
     _tag: "Failure",
     failure: {
       _tag: "ShopifyCliError",
-      detail: expect.stringContaining(detail),
+      detail: expect.stringContaining(detail) as unknown,
     },
   });
 

@@ -144,7 +144,7 @@ const commandLine = Effect.fn("Bosun.commandLine")(function* (pid: number) {
 
 const output = Effect.fn("Bosun.output")(function* (
   program: string,
-  args: ReadonlyArray<string>,
+  args: readonly string[],
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   return yield* spawner
@@ -170,7 +170,7 @@ const processTable = output("ps", ["-A", "-o", "pid=,ppid="]).pipe(
     const fields = numbers(text);
     const parents = new Map<number, number>();
     for (let index = 0; index + 1 < fields.length; index += 2)
-      parents.set(fields[index]!, fields[index + 1]!);
+      parents.set(fields[index], fields[index + 1]);
     return parents;
   }),
 );

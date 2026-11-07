@@ -173,7 +173,7 @@ const editedFiles = Effect.fn("Devkit.editedFiles")(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const edited: Array<string> = [];
+  const edited: string[] = [];
   for (const [file, hash] of Object.entries(stamp.files)) {
     const at = path.join(app, VENDOR, file);
     if (
@@ -188,9 +188,9 @@ const editedFiles = Effect.fn("Devkit.editedFiles")(function* (
 export interface Synced {
   readonly tools: string;
   readonly layer: Layer;
-  readonly added: ReadonlyArray<string>;
-  readonly changed: ReadonlyArray<string>;
-  readonly removed: ReadonlyArray<string>;
+  readonly added: readonly string[];
+  readonly changed: readonly string[];
+  readonly removed: readonly string[];
   readonly alchemyMismatch: Option.Option<AlchemyMismatch>;
 }
 
@@ -214,15 +214,15 @@ export const sync = Effect.fn("Devkit.sync")(function* (
       return yield* new EditedVendorError({ files: edited });
   }
   const { head, files, alchemy } = yield* source(tools, layer);
-  const before = Option.match(stamp, {
-    onNone: () => ({}) as Record<string, string>,
+  const before: Readonly<Record<string, string>> = Option.match(stamp, {
+    onNone: () => ({}),
     onSome: (s) => s.files,
   });
   const removed = Object.keys(before).filter((file) => !files.has(file));
   for (const file of removed)
     yield* fs.remove(path.join(app, VENDOR, file), { force: true });
-  const added: Array<string> = [];
-  const changed: Array<string> = [];
+  const added: string[] = [];
+  const changed: string[] = [];
   const hashes: Record<string, string> = {};
   for (const [file, text] of files) {
     const hash = sha256(text);
@@ -265,7 +265,7 @@ export interface Status {
   readonly head: string;
   readonly layer: Option.Option<Layer>;
   readonly behind: boolean;
-  readonly edited: ReadonlyArray<string>;
+  readonly edited: readonly string[];
   /** The vendored devkit was built against another Alchemy than the app runs. */
   readonly alchemyMismatch: Option.Option<AlchemyMismatch>;
 }

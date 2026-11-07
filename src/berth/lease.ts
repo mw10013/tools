@@ -20,7 +20,7 @@ import {
   sweep,
 } from "./domain.ts";
 import { Ledger } from "./ledger.ts";
-import { type Checkout } from "./settings.ts";
+import type { Checkout } from "./settings.ts";
 import * as Shopify from "./shopify.ts";
 
 export class UnknownEnvError extends Schema.TaggedError<UnknownEnvError>()(
@@ -119,7 +119,7 @@ export const acquire = Effect.fn("Berth.acquire")(function* (
   const spec = checkout.manifest.envs[env];
   const now = yield* DateTime.now;
   const request = {
-    key: { machine: policy.machine, checkout: checkout.path, env: env },
+    key: { machine: policy.machine, checkout: checkout.path, env },
     project: checkout.manifest.project,
     spec,
     adopt,
@@ -192,8 +192,8 @@ export const show = Effect.fn("Berth.show")(function* (
 });
 
 export interface Listing {
-  readonly holdings: ReadonlyArray<Holding>;
-  readonly stores: ReadonlyArray<PooledStore>;
+  readonly holdings: readonly Holding[];
+  readonly stores: readonly PooledStore[];
 }
 
 export const list = Effect.fn("Berth.list")(function* (

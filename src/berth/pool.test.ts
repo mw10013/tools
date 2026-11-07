@@ -27,8 +27,8 @@ const devStore = (
 });
 
 const plan = (input: {
-  listed: ReadonlyArray<string>;
-  orgStores: ReadonlyArray<OrgStore>;
+  listed: readonly string[];
+  orgStores: readonly OrgStore[];
   count?: number;
 }) =>
   planPool({

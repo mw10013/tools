@@ -23,8 +23,14 @@ const environment = (env: Record<string, string>) =>
 const bindable = (port: number) =>
   new Promise<boolean>((resolve) => {
     const server = createServer();
-    server.once("error", () => resolve(false));
-    server.listen(port, "localhost", () => server.close(() => resolve(true)));
+    server.once("error", () => {
+      resolve(false);
+    });
+    server.listen(port, "localhost", () =>
+      server.close(() => {
+        resolve(true);
+      }),
+    );
   });
 
 describe("publishFreePort", () => {

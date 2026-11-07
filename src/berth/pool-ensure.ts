@@ -20,8 +20,8 @@ export class StoreDomainTakenError extends Schema.TaggedError<StoreDomainTakenEr
 
 export interface Ensured {
   readonly pool: Pool;
-  readonly adopted: ReadonlyArray<StoreDomain>;
-  readonly created: ReadonlyArray<StoreDomain>;
+  readonly adopted: readonly StoreDomain[];
+  readonly created: readonly StoreDomain[];
 }
 
 /**
@@ -53,7 +53,7 @@ export const ensure = Effect.fn("PoolEnsure.ensure")(function* (
     stores: [...listed.stores, ...plan.adopt],
   });
   let changed = saved.changed;
-  const created: Array<StoreDomain> = [];
+  const created: StoreDomain[] = [];
   const commitHint = Effect.suspend(() =>
     changed
       ? Console.error("stores.json changed: commit it in ~/projects/tools")

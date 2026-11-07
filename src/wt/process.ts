@@ -25,7 +25,7 @@ const lastLine = (text: string) =>
 export const capture = Effect.fn("Process.capture")(function* (
   directory: string,
   program: string,
-  args: ReadonlyArray<string>,
+  args: readonly string[],
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const command = [program, ...args].join(" ");
@@ -56,7 +56,7 @@ export const capture = Effect.fn("Process.capture")(function* (
 export const run = Effect.fn("Process.run")(function* (
   directory: string,
   program: string,
-  args: ReadonlyArray<string>,
+  args: readonly string[],
 ) {
   const output = yield* capture(directory, program, args);
   if (output.exitCode !== 0)
@@ -72,7 +72,7 @@ export const run = Effect.fn("Process.run")(function* (
 export const stream = Effect.fn("Process.stream")(function* (
   directory: string,
   program: string,
-  args: ReadonlyArray<string>,
+  args: readonly string[],
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const command = [program, ...args].join(" ");
@@ -89,7 +89,7 @@ export const stream = Effect.fn("Process.stream")(function* (
           extendEnv: true,
         }),
       );
-      const [, , code] = yield* Effect.all(
+      const [_stdout, _stderr, code] = yield* Effect.all(
         [
           Stream.runForEach(child.stdout, toStderr),
           Stream.runForEach(child.stderr, toStderr),

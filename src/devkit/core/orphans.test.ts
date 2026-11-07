@@ -22,8 +22,8 @@ const alive = (pid: number) => {
   }
 };
 
-const directories: Array<string> = [];
-const pids: Array<number> = [];
+const directories: string[] = [];
+const pids: number[] = [];
 
 const directory = () => {
   const made = fs.realpathSync(
@@ -62,7 +62,7 @@ describe("orphansIn", () => {
 
     const found = orphansIn(root);
     expect(found.map(({ pid }) => pid)).toEqual([inside]);
-    expect(path.basename(found[0]!.command)).toBe("sleep");
+    expect(path.basename(found[0].command)).toBe("sleep");
 
     stopOrphans(found);
     expect(alive(inside)).toBe(false);
@@ -72,7 +72,8 @@ describe("orphansIn", () => {
   it("ignores a process whose parent still runs", () => {
     const root = directory();
     const owned = spawn("sleep", ["600"], { cwd: root, stdio: "ignore" });
-    pids.push(owned.pid!);
+    if (owned.pid === undefined) throw new Error("sleep did not spawn");
+    pids.push(owned.pid);
     expect(orphansIn(root)).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@
  *
  * @module
  */
-import * as Option from "effect/Option";
+import type * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 export const NAME_MAX = 40;
@@ -17,13 +17,13 @@ export const WorktreeName = Schema.String.check(
 export type WorktreeName = typeof WorktreeName.Type;
 
 export const fromWords = (
-  words: ReadonlyArray<string>,
+  words: readonly string[],
 ): Option.Option<WorktreeName> => {
   const kebab = words
     .join(" ")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-+|-+$/gu, "");
+    .replaceAll(/[^a-z0-9]+/gu, "-")
+    .replaceAll(/^-+|-+$/gu, "");
   const head = kebab.slice(0, NAME_MAX + 1);
   const hyphen = head.lastIndexOf("-");
   const cut =

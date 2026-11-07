@@ -19,7 +19,7 @@ import {
 import { Ledger } from "./ledger.ts";
 
 const machine = MachineName.make("test-mbp");
-const directories: Array<string> = [];
+const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0))
     fs.rmSync(directory, { recursive: true, force: true });

@@ -219,7 +219,7 @@ const release = Command.make(
   ]),
 );
 
-const toTable = (rows: ReadonlyArray<ReadonlyArray<string>>): string => {
+const toTable = (rows: readonly (readonly string[])[]): string => {
   const widths = rows[0].map((_, column) =>
     Math.max(...rows.map((row) => row[column].length)),
   );

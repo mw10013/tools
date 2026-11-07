@@ -108,8 +108,8 @@ export type CanonicalTrigger = ReturnType<typeof canonicalTrigger>;
 export const triggerDrift = (
   trigger: Trigger,
   canonical: CanonicalTrigger,
-): ReadonlyArray<string> =>
-  (Object.keys(canonical) as Array<keyof CanonicalTrigger>).filter(
+): readonly string[] =>
+  (Object.keys(canonical) as (keyof CanonicalTrigger)[]).filter(
     (key) => JSON.stringify(trigger[key]) !== JSON.stringify(canonical[key]),
   );
 
@@ -137,7 +137,7 @@ const decodeJson =
       ),
     );
 
-const cf = (args: ReadonlyArray<string>) =>
+const cf = (args: readonly string[]) =>
   runCommand("cf", args).pipe(
     Effect.mapError((error) => new StageError({ message: error.message })),
   );
@@ -256,12 +256,14 @@ const githubRepo = Effect.fn("DeployedStage.githubRepo")(function* () {
   ]).pipe(
     Effect.mapError((error) => new StageError({ message: error.message })),
   )).trim();
-  const match = /github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/u.exec(url);
+  const match = /github\.com[:/](?<owner>[^/]+)\/(?<name>.+?)(?:\.git)?$/u.exec(
+    url,
+  );
   if (match === null)
     return yield* new StageError({
       message: `origin is not a GitHub repository: ${url}`,
     });
-  return { owner: match[1] ?? "", name: match[2] ?? "" };
+  return { owner: match.groups?.owner ?? "", name: match.groups?.name ?? "" };
 });
 
 /**
@@ -338,7 +340,7 @@ const triggerProblems = Effect.fn("DeployedStage.triggerProblems")(function* (
   const canonical = canonicalTrigger(stage, yield* sharedBuildToken());
   const repo = yield* githubRepo();
   const triggers = yield* listTriggers(tag);
-  const problems: Array<string> = [];
+  const problems: string[] = [];
   if (triggers.length !== 1)
     problems.push(
       `${String(triggers.length)} triggers on ${websiteOf(stage)}; expected exactly one`,
@@ -380,7 +382,7 @@ export const ensureTrigger = Effect.fn("DeployedStage.ensureTrigger")(
     let wrote = false;
     const done = (what: string) =>
       Console.error(`stage: ${dryRun ? "would have " : ""}${what}`);
-    const write = (args: ReadonlyArray<string>) =>
+    const write = (args: readonly string[]) =>
       Effect.sync(() => {
         wrote = true;
       }).pipe(
@@ -477,7 +479,7 @@ export const ensureTrigger = Effect.fn("DeployedStage.ensureTrigger")(
 
 /** Runs Alchemy in the app's root as `run`, its output shown as it comes. */
 const alchemy = Effect.fn("DeployedStage.alchemy")(function* (
-  args: ReadonlyArray<string>,
+  args: readonly string[],
   run: StageRun,
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -532,7 +534,7 @@ const plan = Effect.fn("DeployedStage.plan")(function* (stage: Deployed) {
 export const check = Effect.fn("DeployedStage.check")(function* (
   stage: Deployed,
 ) {
-  const problems: Array<string> = [];
+  const problems: string[] = [];
   const planned = yield* plan(stage);
   if (planned.ok) {
     yield* Console.log(

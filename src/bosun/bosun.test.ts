@@ -31,16 +31,31 @@ if (process.argv[2] !== "no-handler") process.on("SIGTERM", () => { console.log(
 }
 `;
 
+/** What the `bosun` CLI prints: a server's record, or the error a command failed with. */
+interface Printed {
+  readonly state: string;
+  readonly name: string;
+  readonly url: string;
+  readonly port: number;
+  readonly run: string;
+  readonly log: string;
+  readonly group: number;
+  readonly pid: number;
+  readonly error: { readonly _tag: string; readonly message: string };
+}
+
 let checkout: string;
 
-const bosun = (...args: Array<string>) => {
+const bosun = (...args: string[]) => {
   const result = spawnSync("vpx", [ENTRY, ...args], {
     cwd: checkout,
     encoding: "utf8",
   });
   return {
     code: result.status,
-    json: result.stdout.trim() === "" ? undefined : JSON.parse(result.stdout),
+    json: (result.stdout.trim() === ""
+      ? undefined
+      : JSON.parse(result.stdout)) as Printed,
     stderr: result.stderr,
   };
 };
@@ -75,7 +90,7 @@ describe("bosun", () => {
     const started = bosun("start", "dev", "--", "node", "server.mjs");
     expect(started.code).toBe(0);
     expect(started.json).toMatchObject({ state: "running", name: "dev" });
-    expect(started.json.url).toBe(`http://x.test/${started.json.port}`);
+    expect(started.json.url).toBe(`http://x.test/${String(started.json.port)}`);
 
     const adopted = bosun("start", "dev", "--", "node", "server.mjs");
     expect(adopted.json.run).toBe(started.json.run);
@@ -138,11 +153,11 @@ describe("bosun", () => {
       { cwd: elsewhere, stdio: ["ignore", "pipe", "inherit"] },
     );
     try {
-      const port = await new Promise<string>((resolve) =>
-        holder.stdout.once("data", (chunk: Buffer) =>
-          resolve(chunk.toString().trim()),
-        ),
-      );
+      const port = await new Promise<string>((resolve) => {
+        holder.stdout.once("data", (chunk: Buffer) => {
+          resolve(chunk.toString().trim());
+        });
+      });
       const taken = bosun(
         "start",
         "dev",
@@ -155,7 +170,9 @@ describe("bosun", () => {
       expect(taken.code).toBe(1);
       expect(taken.json.error._tag).toBe("PortTakenError");
       expect(taken.json.error.message).toContain(`port ${port}`);
-      expect(taken.json.error.message).toContain(`pid ${holder.pid} (node -e`);
+      expect(taken.json.error.message).toContain(
+        `pid ${String(holder.pid)} (node -e`,
+      );
       expect(taken.json.error.message).toContain(` in ${elsewhere}`);
       expect(bosun("status", "dev").json.state).toBe("stopped");
     } finally {

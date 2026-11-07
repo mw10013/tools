@@ -38,7 +38,7 @@ export const ServerRecord = Schema.Struct({
 export type ServerRecord = typeof ServerRecord.Type;
 
 export const Endpoint = Schema.Struct({
-  port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65_535 })),
   url: Schema.optional(Schema.String),
 });
 export type Endpoint = typeof Endpoint.Type;
@@ -119,7 +119,7 @@ export const runOutput = (
 export type PortListener =
   | { readonly _tag: "Free" }
   | { readonly _tag: "Server" }
-  | { readonly _tag: "Taken"; readonly pids: ReadonlyArray<number> };
+  | { readonly _tag: "Taken"; readonly pids: readonly number[] };
 
 /** Deeper than any real process tree; it ends the walk should `parents` hold a cycle. */
 const MAX_ANCESTRY = 256;
@@ -143,7 +143,7 @@ const descends = (
  * pid missing from the table exited after it was listed, so it holds nothing.
  */
 export const listenerOf = (
-  listening: ReadonlyArray<number>,
+  listening: readonly number[],
   parents: ReadonlyMap<number, number>,
   command: number,
 ): PortListener => {

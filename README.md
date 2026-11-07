@@ -396,6 +396,12 @@ commit, and sync. The app's formatter skips `vendor/` (tools formats at 80
 columns); its linter and type check cover it, since a file the linter ignores
 is not type-checked either.
 
+`core/lint/rules.ts` is the house lint rule set. tools lints the whole repo
+with it, devkit included, so vendored devkit passes the rules an app applies to
+it. An app spreads `lint` from `#devkit/core/lint/rules.ts` into its config and
+adds only its own data: `ignorePatterns`, the website's plugins and rules, and
+its import boundaries, which start from `baseRestrictions`.
+
 Two files are runnable. `cloudflare/logs.ts` reads a deployed stage's Worker
 logs from Workers Observability: `"logs": "vpx vendor/devkit/cloudflare/logs.ts"`
 (`show`, `follow`, `wait`). `cloudflare/deployed-stage.ts` runs Alchemy on staging and

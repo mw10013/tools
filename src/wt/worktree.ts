@@ -115,12 +115,12 @@ export interface Created {
   readonly path: string;
   readonly branch: WorktreeName;
   readonly base: string;
-  readonly steps: ReadonlyArray<string>;
+  readonly steps: readonly string[];
 }
 
 export const create = Effect.fn("Worktree.create")(function* (
   directory: string,
-  words: ReadonlyArray<string>,
+  words: readonly string[],
   options: { readonly from: Option.Option<string>; readonly exact: boolean },
 ) {
   const fs = yield* FileSystem.FileSystem;
@@ -164,7 +164,7 @@ export const create = Effect.fn("Worktree.create")(function* (
     base,
   ]);
   yield* Console.error(`wt: created ${worktree} on ${branch} from ${base}`);
-  const steps: Array<string> = ["git worktree add"];
+  const steps: string[] = ["git worktree add"];
   yield* share(worktree, repository.root);
   steps.push("share");
   const scripts = yield* packageScripts(worktree);
@@ -187,7 +187,7 @@ const initHook = Effect.fn("Worktree.initHook")(function* (
 
 export interface Initialized {
   readonly path: string;
-  readonly steps: ReadonlyArray<string>;
+  readonly steps: readonly string[];
 }
 
 export const init = Effect.fn("Worktree.init")(function* (
@@ -234,7 +234,7 @@ const find = Effect.fn("Worktree.find")(function* (
       (worktree) =>
         real === worktree.path || real.startsWith(`${worktree.path}/`),
     )
-    .sort((a, b) => b.path.length - a.path.length);
+    .toSorted((a, b) => b.path.length - a.path.length);
   return yield* Effect.fromNullishOr(inside[0]).pipe(
     Effect.mapError(() => new WorktreeNotFoundError({ target })),
   );
@@ -244,7 +244,7 @@ export interface Removed {
   readonly path: string;
   readonly branch: Option.Option<string>;
   readonly landed: string;
-  readonly steps: ReadonlyArray<string>;
+  readonly steps: readonly string[];
 }
 
 export const remove = Effect.fn("Worktree.remove")(function* (
@@ -285,7 +285,7 @@ export const remove = Effect.fn("Worktree.remove")(function* (
         commits: ahead,
       });
   }
-  const steps: Array<string> = [];
+  const steps: string[] = [];
   const scripts = yield* packageScripts(worktree.path);
   if (Option.exists(scripts, (names) => names.has("worktree:teardown"))) {
     yield* stream(worktree.path, "vp", ["run", "worktree:teardown"]);
@@ -299,7 +299,9 @@ export const remove = Effect.fn("Worktree.remove")(function* (
   // keep working in a directory that no longer exists.
   const orphans = yield* Effect.sync(() => orphansIn(worktree.path));
   if (orphans.length > 0) {
-    yield* Effect.sync(() => stopOrphans(orphans));
+    yield* Effect.sync(() => {
+      stopOrphans(orphans);
+    });
     yield* Console.error(
       `wt: stopped what ${worktree.path} left running: ${orphans.map(describeOrphan).join(", ")}`,
     );
