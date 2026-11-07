@@ -1,6 +1,10 @@
 /**
- * What an app's Alchemy stacks share on a {@link Deployed} stage: the providers, the state store
- * and the `secrets` policy.
+ * What an app's Alchemy stacks share on a {@link Deployed} stage: the providers, the state store,
+ * the `secrets` policy, and the check that the stage's environment holds every field the app
+ * declares ({@link requireStageEnv}).
+ *
+ * A deployed stage's values are its Workers Builds trigger's variables, which `vp run stage up`
+ * syncs from `.env.<stage>` and Builds puts in the deploy's environment.
  *
  * {@link stageState} admits a run on a deployed stage only from Workers Builds on the stage's
  * branch or from the `stage` CLI, and only the Alchemy command that run is for
@@ -16,10 +20,13 @@
  */
 import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Alchemy from "alchemy";
+import * as Config from "effect/Config";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
 import {
@@ -219,4 +226,88 @@ export const guardDeployedRun: Effect.Effect<void, never, Alchemy.Stage> =
     return Option.isSome(refusal)
       ? Effect.die(new DeployedRunRefusedError({ reason: refusal.value }))
       : Effect.void;
+  });
+
+/**
+ * An app's deployed-stage fields, the default export of `stacks/stage-env.ts`: one field per
+ * variable, named after it, a secret as `Schema.Redacted(...)`. Each decodes from the variable's
+ * string with no services.
+ */
+export type StageFields = Schema.Struct<Schema.Struct.Fields> &
+  Schema.Codec<unknown>;
+
+/** Which of `fields` `env` lacks or holds an invalid value for, and which are secrets. */
+export interface StageEnvCheck {
+  readonly invalid: readonly string[];
+  readonly secrets: readonly string[];
+}
+
+/**
+ * Parses each of `fields` from `env` as `Config` reads it in a Worker. Names only: a parse
+ * failure's own message can quote the value, a secret included.
+ */
+export const checkStageEnv = (
+  fields: StageFields,
+  env: Readonly<Record<string, string | undefined>>,
+): Effect.Effect<StageEnvCheck> => {
+  const provider = ConfigProvider.fromEnv({
+    env: Object.fromEntries(
+      Object.entries(env).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined,
+      ),
+    ),
+  });
+  return Effect.forEach(Object.keys(fields.fields), (name) =>
+    Config.schema(fields.fields[name] as StageFields, name)
+      .parse(provider)
+      .pipe(
+        Effect.map((value) => ({ name, secret: Redacted.isRedacted(value) })),
+        Effect.option,
+        Effect.map((parsed) => ({ name, parsed })),
+      ),
+  ).pipe(
+    Effect.map((results) => ({
+      invalid: results
+        .filter(({ parsed }) => Option.isNone(parsed))
+        .map(({ name }) => name),
+      secrets: results
+        .filter(({ parsed }) => Option.exists(parsed, ({ secret }) => secret))
+        .map(({ name }) => name),
+    })),
+  );
+};
+
+export class StageEnvMissingError extends Schema.TaggedError<StageEnvMissingError>()(
+  "StageEnvMissingError",
+  { stage: Deployed, names: Schema.Array(Schema.String) },
+) {
+  override get message() {
+    return `${this.stage}'s environment lacks or has invalid ${this.names.join(", ")}. Add them to .env.${this.stage} and run vp run stage up ${this.stage}`;
+  }
+}
+
+/**
+ * The app stack's first step. On a {@link Deployed} stage it dies unless the environment holds
+ * every one of `fields`, so a Builds deploy missing a trigger variable fails instead of binding
+ * nothing where a Worker reads `Config.option`.
+ *
+ * @example
+ * export default Alchemy.Stack("app", { providers: stageProviders, state: stageState, secrets: deployedSecrets },
+ *   Effect.gen(function* () {
+ *     yield* requireStageEnv(StageEnv);
+ *     // ...
+ *   }),
+ * );
+ */
+export const requireStageEnv = (
+  fields: StageFields,
+): Effect.Effect<void, never, Alchemy.Stage> =>
+  Effect.gen(function* () {
+    const stage = yield* Alchemy.Stage;
+    if (!isDeployed(stage)) return;
+    const { invalid } = yield* checkStageEnv(fields, process.env);
+    if (invalid.length > 0)
+      return yield* Effect.die(
+        new StageEnvMissingError({ stage, names: invalid }),
+      );
   });

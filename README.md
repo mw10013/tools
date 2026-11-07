@@ -404,9 +404,17 @@ its import boundaries, which start from `baseRestrictions`.
 
 Two files are runnable. `cloudflare/logs.ts` reads a deployed stage's Worker
 logs from Workers Observability: `"logs": "vpx vendor/devkit/cloudflare/logs.ts"`
-(`show`, `follow`, `wait`). `cloudflare/deployed-stage.ts` runs Alchemy on staging and
-production from a laptop and owns their Workers Builds triggers:
-`"stage": "vpx vendor/devkit/cloudflare/deployed-stage.ts"` (`check`,
-`config`, `trigger`, `reset`, `bootstrap`; `vp run stage --help`), with the
-stack helpers it relies on in `cloudflare/deployed-stack.ts`. The coder skill's `deployed-stages.md` is the
+(`show`, `follow`, `wait`). `cloudflare/deployed-stage.ts` sets up staging and
+production's Workers Builds deploys from a laptop:
+`"stage": "vpx vendor/devkit/cloudflare/deployed-stage.ts"`, run as
+`vp run stage <up|check|reset> <stage>` (`vp run stage --help`). `up` checks
+`.env.<stage>` against the fields the app declares in `stacks/stage-env.ts`,
+places a Website if the stage has none, makes its one trigger canonical, sets
+the trigger's variables from the file (secrets as Builds secrets, through a
+temporary file, never on argv), deletes undeclared ones, and builds the
+stage's branch; `production` writes only with `--confirm production`. `check`
+reads the plan, the trigger, its variables' names and the latest build.
+`reset staging --confirm staging` destroys staging, then runs `up`. The stack
+helpers it relies on, `requireStageEnv` among them, are in
+`cloudflare/deployed-stack.ts`. The coder skill's `deployed-stages.md` is the
 lifecycle.

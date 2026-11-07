@@ -4,17 +4,43 @@ import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import { STAGE_RUN, StageRun } from "#devkit/cloudflare/stage.ts";
 
 import {
   alchemyCommandOf,
+  checkStageEnv,
   deployedRunRefusal,
   DeployedRunRefusedError,
   guardDeployedRun,
   refuseUnsafeNuke,
+  requireStageEnv,
+  StageEnvMissingError,
   UnsafeNukeRefusedError,
 } from "./deployed-stack.ts";
+
+const Fields = Schema.Struct({
+  API_KEY: Schema.NonEmptyString,
+  API_SECRET: Schema.Redacted(Schema.NonEmptyString),
+});
+
+describe("checkStageEnv", () => {
+  it.effect(
+    "names the fields the environment lacks or holds invalid, and the secrets",
+    () =>
+      Effect.gen(function* () {
+        assert.deepStrictEqual(
+          yield* checkStageEnv(Fields, { API_KEY: "", API_SECRET: "s" }),
+          { invalid: ["API_KEY"], secrets: ["API_SECRET"] },
+        );
+        assert.deepStrictEqual(yield* checkStageEnv(Fields, {}), {
+          invalid: ["API_KEY", "API_SECRET"],
+          secrets: [],
+        });
+      }),
+  );
+});
 
 describe("alchemyCommandOf", () => {
   it("finds the first word naming an Alchemy command, as Alchemy's CLI does", () => {
@@ -200,6 +226,32 @@ describe("refuseUnsafeNuke", () => {
           assert.isTrue(
             Exit.isSuccess(yield* withRun(refuseUnsafeNuke, {}, argv)),
           );
+      }),
+  );
+});
+
+describe("requireStageEnv", () => {
+  const guard = (stage: string, env: Record<string, string>) =>
+    withRun(
+      requireStageEnv(Fields).pipe(Effect.provideService(Alchemy.Stage, stage)),
+      env,
+      ["deploy", "--stage", stage],
+    );
+
+  it.effect(
+    "fails a deployed stage's deploy whose environment lacks a field, naming it, and ignores a per-developer stage",
+    () =>
+      Effect.gen(function* () {
+        const missing = defect(yield* guard("staging", { API_KEY: "key" }));
+        assert.instanceOf(missing, StageEnvMissingError);
+        assert.deepStrictEqual(missing.names, ["API_SECRET"]);
+        assert.include(missing.message, "vp run stage up staging");
+        assert.isTrue(
+          Exit.isSuccess(
+            yield* guard("production", { API_KEY: "key", API_SECRET: "s" }),
+          ),
+        );
+        assert.isTrue(Exit.isSuccess(yield* guard("dev-mw", {})));
       }),
   );
 });
