@@ -28,7 +28,7 @@ const KEPT_GENERATIONS = 10;
 const COMMIT_ATTEMPTS = 50;
 const TEMP_FILE_LIFETIME = Duration.minutes(1);
 
-const GENERATION = /^g-(\d+)\.json$/u;
+const GENERATION = /^g-(?<generation>\d+)\.json$/u;
 const StateJson = Schema.fromJsonString(State);
 export class LedgerContendedError extends Schema.TaggedError<LedgerContendedError>()(
   "LedgerContendedError",
@@ -73,7 +73,7 @@ export class Ledger extends Context.Service<
           return names
             .flatMap((name) => {
               const match = GENERATION.exec(name);
-              return match === null ? [] : [Number(match[1])];
+              return match === null ? [] : [Number(match.groups?.generation)];
             })
             .toSorted((a, b) => a - b);
         });
@@ -130,7 +130,10 @@ export class Ledger extends Context.Service<
           for (const name of yield* fs.readDirectory(directory)) {
             const file = path.join(directory, name);
             const match = GENERATION.exec(name);
-            if (match !== null && Number(match[1]) <= latest - KEPT_GENERATIONS)
+            if (
+              match !== null &&
+              Number(match.groups?.generation) <= latest - KEPT_GENERATIONS
+            )
               yield* fs.remove(file).pipe(Effect.ignore);
             if (name.startsWith("tmp-")) {
               const info = yield* fs.stat(file).pipe(Effect.option);

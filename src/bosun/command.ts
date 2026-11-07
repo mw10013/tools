@@ -100,7 +100,7 @@ const start = Command.make(
         const root = yield* checkoutRoot;
         const [program, ...args] = command;
         yield* printJson(
-          yield* Bosun.start(root, name, [program as string, ...args], {
+          yield* Bosun.start(root, name, [program, ...args], {
             note,
             timeout: Duration.seconds(timeout),
           }),
@@ -134,10 +134,7 @@ const runCommand = Command.make(
     Effect.gen(function* () {
       const root = yield* checkoutRoot;
       const [program, ...args] = command;
-      const code = yield* Bosun.run(root, name, run, note, [
-        program as string,
-        ...args,
-      ]);
+      const code = yield* Bosun.run(root, name, run, note, [program, ...args]);
       process.exitCode = code;
     }),
 ).pipe(

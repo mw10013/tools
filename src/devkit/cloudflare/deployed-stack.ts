@@ -127,14 +127,14 @@ export const requireDeployed: Effect.Effect<Deployed, never, Alchemy.Stage> =
  * and which decodes with no services, since neither a dotenv file nor Alchemy state can supply one.
  */
 export type StageConfigSchema = Schema.Struct<Schema.Struct.Fields> &
-  Schema.Codec<unknown, unknown, never, never>;
+  Schema.Codec<unknown>;
 
 /**
  * The fields that do not parse on their own, by name. A failure's own message can quote the value
  * that failed, a secret included, so callers report these names instead.
  */
-const invalidFields = <S extends StageConfigSchema>(
-  schema: S,
+const invalidFields = (
+  schema: StageConfigSchema,
   parses: (field: StageConfigSchema) => Effect.Effect<unknown, unknown>,
 ) =>
   Effect.filter(Object.keys(schema.fields), (name) =>
@@ -246,7 +246,7 @@ export const decodeRecord = <S extends StageConfigSchema>(schema: S) => {
 export const shellOverrides = (
   schema: StageConfigSchema,
   env: Readonly<Record<string, string | undefined>>,
-): ReadonlyArray<string> =>
+): readonly string[] =>
   Object.keys(schema.fields).filter((name) => env[name] !== undefined);
 
 /** The variables a run on a {@link Deployed} stage is judged by. */
@@ -278,7 +278,7 @@ export type AlchemyCommand = typeof AlchemyCommand.Type;
  * @see `requestedCommand` in Alchemy's `src/Cli/main.ts`
  */
 export const alchemyCommandOf = (
-  argv: ReadonlyArray<string>,
+  argv: readonly string[],
 ): AlchemyCommand | undefined => argv.slice(2).find(Schema.is(AlchemyCommand));
 
 /** Who runs Alchemy on a deployed stage: Workers Builds, or the `stage` CLI for one of its reasons. */
@@ -292,8 +292,8 @@ type DeployedRun = "builds" | StageRun;
 const permits: Record<
   DeployedRun,
   {
-    readonly commands: ReadonlyArray<AlchemyCommand>;
-    readonly stages: ReadonlyArray<Deployed>;
+    readonly commands: readonly AlchemyCommand[];
+    readonly stages: readonly Deployed[];
   }
 > = {
   builds: { commands: ["deploy"], stages: Deployed.literals },

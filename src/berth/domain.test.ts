@@ -42,7 +42,7 @@ const acquire = (
   options: {
     adopt?: string;
     config?: string;
-    stores?: ReadonlyArray<StoreDomain>;
+    stores?: readonly StoreDomain[];
     now?: DateTime.Utc;
   } = {},
 ) =>

@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { parseWorktrees } from "./git.ts";
 import * as Worktree from "./worktree.ts";
 
-const git = (directory: string, ...args: Array<string>) =>
+const git = (directory: string, ...args: string[]) =>
   execFileSync("git", args, { cwd: directory, encoding: "utf8" }).trim();
 
 const runEffect = <A, E>(
@@ -50,7 +50,7 @@ afterEach(() => {
   fs.rmSync(scratch, { recursive: true, force: true });
 });
 
-const create = (words: Array<string>, exact = false) =>
+const create = (words: string[], exact = false) =>
   runEffect(Worktree.create(repo, words, { from: Option.none(), exact }));
 
 const remove = (target: string, force = false) =>

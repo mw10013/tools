@@ -7,6 +7,7 @@ import { NodeServices } from "@effect/platform-node";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import * as Devkit from "./sync.ts";
@@ -15,7 +16,7 @@ let scratch: string;
 let tools: string;
 let app: string;
 
-const git = (directory: string, ...args: Array<string>) =>
+const git = (directory: string, ...args: string[]) =>
   execFileSync("git", args, { cwd: directory, encoding: "utf8" }).trim();
 
 const write = (root: string, file: string, text: string) => {
@@ -50,6 +51,11 @@ const failureTag = (exit: Exit.Exit<unknown, { readonly _tag: string }>) =>
 const vendored = (file: string) =>
   fs.readFileSync(path.join(app, Devkit.VENDOR, file), "utf8");
 
+const vendoredStamp = () =>
+  Schema.decodeUnknownSync(Schema.fromJsonString(Devkit.Stamp))(
+    vendored("devkit.json"),
+  );
+
 beforeEach(() => {
   scratch = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "devkit-test-")),
@@ -77,7 +83,7 @@ afterEach(() => {
 describe("devkit sync", () => {
   it("copies a layer's files at tools' HEAD, without tests or outer layers", async () => {
     const synced = value(await sync("core"));
-    expect([...synced.added].sort()).toEqual([
+    expect(synced.added.toSorted()).toEqual([
       "core/command.ts",
       "core/lint/rules.ts",
     ]);
@@ -85,7 +91,7 @@ describe("devkit sync", () => {
     expect(fs.existsSync(path.join(app, Devkit.VENDOR, "cloudflare"))).toBe(
       false,
     );
-    const stamp = JSON.parse(vendored("devkit.json"));
+    const stamp = vendoredStamp();
     expect(stamp.tools).toBe(git(tools, "rev-parse", "HEAD"));
     expect(stamp.layer).toBe("core");
   });
@@ -136,14 +142,14 @@ describe("devkit sync", () => {
     );
     commit();
     value(await sync("core"));
-    expect(JSON.parse(vendored("devkit.json")).alchemy).toBeUndefined();
+    expect(vendoredStamp().alchemy).toBeUndefined();
     write(
       app,
       "node_modules/alchemy/package.json",
       JSON.stringify({ name: "alchemy", version: "2.0.0-beta.84" }),
     );
     const synced = value(await sync("cloudflare"));
-    expect(JSON.parse(vendored("devkit.json")).alchemy).toBe("2.0.0-beta.85");
+    expect(vendoredStamp().alchemy).toBe("2.0.0-beta.85");
     expect(Option.getOrNull(synced.alchemyMismatch)).toEqual({
       devkit: "2.0.0-beta.85",
       app: "2.0.0-beta.84",

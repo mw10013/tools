@@ -619,7 +619,7 @@ const IMAGE_URL_RE =
 const mapProse = (markdown: string, transform: (prose: string) => string) =>
   markdown
     .split(
-      /(^[ \t]*(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*(?:`{3,}|~{3,})[^\n]*(?:\n|$))/gmu,
+      /(?<fence>^[ \t]*(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*(?:`{3,}|~{3,})[^\n]*(?:\n|$))/gmu,
     )
     .map((part, index) => (index % 2 === 0 ? transform(part) : part))
     .join("");

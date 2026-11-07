@@ -53,12 +53,14 @@ const written = {
 };
 
 /** `LocalState`'s write then read of a stack output. */
-const throughLocalState = (value: unknown) =>
+const throughLocalState = (value: unknown): unknown =>
   JSON.parse(JSON.stringify(encodeState(value), null, 2), reviveState);
 
 /** `HttpStateStore`'s, which `Cloudflare.state()` is: the payload arrives parsed. */
-const throughHttpState = (value: unknown) =>
-  reviveStateRecursive(JSON.parse(JSON.stringify(encodeState(value))));
+const throughHttpState = (value: unknown): unknown => {
+  const payload = JSON.stringify(encodeState(value));
+  return reviveStateRecursive(JSON.parse(payload));
+};
 
 const writeEnv = (text: string) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "deployed-stack-"));
@@ -109,7 +111,7 @@ describe("decodeRecord", () => {
 });
 
 /** Resolves an Output the way Alchemy does at plan time, against a stored record. */
-const evaluate = <A>(output: Output.Output<A>, stored: unknown) =>
+const evaluate = <A>(output: Output.Output<A, never>, stored: unknown) =>
   Effect.gen(function* () {
     const state = yield* yield* State;
     yield* state.setOutput({
@@ -296,7 +298,7 @@ describe("deployedRunRefusal", () => {
 const withRun = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   env: Record<string, string>,
-  argv: ReadonlyArray<string>,
+  argv: readonly string[],
 ) =>
   Effect.acquireUseRelease(
     Effect.sync(() => {
@@ -307,7 +309,7 @@ const withRun = <A, E, R>(
         STAGE_RUN,
         ...Object.keys(Fields.fields),
       ])
-        delete process.env[name];
+        Reflect.deleteProperty(process.env, name);
       Object.assign(process.env, env);
       process.argv = ["node", "cli.js", ...argv];
       return saved;
@@ -335,7 +337,7 @@ describe("guardDeployedRun", () => {
     "refuses a hand-run destroy of production, whatever reason the shell names",
     () =>
       Effect.gen(function* () {
-        const envs: ReadonlyArray<Record<string, string>> = [
+        const envs: readonly Record<string, string>[] = [
           {},
           { [STAGE_RUN]: "bootstrap" },
           { [STAGE_RUN]: "reset" },

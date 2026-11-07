@@ -22,7 +22,7 @@ export interface Worktree {
 }
 
 // git lists the main checkout first.
-export const parseWorktrees = (porcelain: string): ReadonlyArray<Worktree> =>
+export const parseWorktrees = (porcelain: string): readonly Worktree[] =>
   porcelain
     .split("\n\n")
     .map((block) => block.trim())

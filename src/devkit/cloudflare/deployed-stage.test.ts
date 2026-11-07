@@ -115,9 +115,10 @@ describe("replacesWebsite", () => {
     expect(replacesWebsite(PLAN)).toBe(false);
     expect(
       replacesWebsite(
-        PLAN.replace("[Backend] update", "[Backend] replace")
-          .replace("[Website/BACKEND] noop", "[Website/BACKEND] replace")
-          .concat("[20:38:14.753] INFO: [WebsiteAssets] replace\n"),
+        `${PLAN.replace("[Backend] update", "[Backend] replace").replace(
+          "[Website/BACKEND] noop",
+          "[Website/BACKEND] replace",
+        )}[20:38:14.753] INFO: [WebsiteAssets] replace\n`,
       ),
     ).toBe(false);
   });
@@ -130,10 +131,10 @@ const TAG = "c028ea6f87854c129e76a0f7a2e3251b";
  * environment it was given; an unlisted command fails, so a write would show.
  */
 const fakeSpawner = (outputs: Record<string, string>) => {
-  const ran: Array<{
+  const ran: {
     line: string;
     stageRun: unknown;
-  }> = [];
+  }[] = [];
   const spawner = ChildProcessSpawner.make((command) =>
     Effect.sync(() => {
       if (command._tag !== "StandardCommand")
@@ -193,12 +194,12 @@ const run = <A, E>(
   effect: Effect.Effect<A, E, ChildProcessSpawner.ChildProcessSpawner>,
   spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
 ) => {
-  const lines: Array<string> = [];
+  const lines: string[] = [];
   const console: Console.Console = Object.assign(
-    Object.create(globalThis.console),
+    Object.create(globalThis.console) as Console.Console,
     {
-      log: (...args: ReadonlyArray<unknown>) => lines.push(args.join(" ")),
-      error: (...args: ReadonlyArray<unknown>) => lines.push(args.join(" ")),
+      log: (...args: readonly unknown[]) => lines.push(args.join(" ")),
+      error: (...args: readonly unknown[]) => lines.push(args.join(" ")),
     },
   );
   return Effect.runPromise(

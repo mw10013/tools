@@ -1,5 +1,7 @@
 import { defineConfig } from "vite-plus";
 
+import { lint } from "#devkit/core/lint/rules.ts";
+
 export default defineConfig(({ command, isPreview }) => {
   if (
     command === "serve" &&
@@ -18,15 +20,6 @@ export default defineConfig(({ command, isPreview }) => {
       ignorePatterns: ["docs/evidence/**"],
     },
     test: { include: ["src/**/*.test.ts"] },
-    lint: {
-      options: { typeAware: true, typeCheck: true },
-      rules: {
-        // The formatter orders import statements; this orders the names inside one.
-        "sort-imports": [
-          "error",
-          { ignoreDeclarationSort: true, ignoreCase: true },
-        ],
-      },
-    },
+    lint,
   };
 });

@@ -12,8 +12,8 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Stream from "effect/Stream";
 
-import { type CheckoutPath, type StoreDomain } from "./domain.ts";
-import { type OrganizationId, type OrgStore } from "./pool.ts";
+import type { CheckoutPath, StoreDomain } from "./domain.ts";
+import type { OrganizationId, OrgStore } from "./pool.ts";
 
 // EPERM: the process exists but belongs to another user.
 const isAlive = (pid: number): boolean => {
@@ -148,7 +148,7 @@ export class ShopifyCli extends Context.Service<
     readonly listStores: (
       organization: OrganizationId,
     ) => Effect.Effect<
-      ReadonlyArray<OrgStore>,
+      readonly OrgStore[],
       ShopifyCliError | StoreListTruncatedError
     >;
     /**
@@ -167,10 +167,7 @@ export class ShopifyCli extends Context.Service<
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       // Progress goes to stderr; create's streams to the terminal because it
       // can take minutes.
-      const shopify = (
-        args: ReadonlyArray<string>,
-        stderr: "pipe" | "inherit",
-      ) => {
+      const shopify = (args: readonly string[], stderr: "pipe" | "inherit") => {
         const command = `shopify ${args.join(" ")}`;
         return Effect.scoped(
           Effect.gen(function* () {

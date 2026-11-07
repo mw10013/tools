@@ -9,16 +9,16 @@ import * as Option from "effect/Option";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { ensure, StoreDomainTakenError } from "./pool-ensure.ts";
-import { type OrgStore } from "./pool.ts";
+import type { OrgStore } from "./pool.ts";
 import { ShopifyCli } from "./shopify.ts";
 
-const directories: Array<string> = [];
+const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0))
     fs.rmSync(directory, { recursive: true, force: true });
 });
 
-const storesFile = (stores: ReadonlyArray<string>) => {
+const storesFile = (stores: readonly string[]) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "berth-pool-"));
   directories.push(directory);
   const file = path.join(directory, "stores.json");
@@ -38,7 +38,7 @@ const devStore = (name: string): OrgStore => ({
 
 /** A Shopify CLI over an in-memory org; `domains` overrides the domain a create returns. */
 const fakeCli = (
-  orgStores: Array<OrgStore>,
+  orgStores: OrgStore[],
   domains: Readonly<Record<string, string>> = {},
 ) =>
   Layer.succeed(ShopifyCli, {
@@ -108,7 +108,7 @@ describe("ensure", () => {
 });
 
 /** A run paused inside `shopify store list`, holding the org as it was then. */
-const pausedRun = (file: string, orgStores: ReadonlyArray<OrgStore>) => {
+const pausedRun = (file: string, orgStores: readonly OrgStore[]) => {
   let listed!: () => void;
   let resume!: () => void;
   const paused = new Promise<void>((resolve) => {

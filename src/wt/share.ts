@@ -43,7 +43,7 @@ export const envChanges = (before: string, after: string) => {
 
 const describeChanges = (before: string, after: string) => {
   const { added, changed, removed } = envChanges(before, after);
-  const part = (label: string, keys: ReadonlyArray<string>) =>
+  const part = (label: string, keys: readonly string[]) =>
     keys.length === 0 ? [] : [`${label} ${keys.join(", ")}`];
   const parts = [
     ...part("added", added),
@@ -111,7 +111,7 @@ const sharedNames = Effect.fn("Share.sharedNames")(function* (main: string) {
     ...(entries.includes("refs") ? ["refs"] : []),
     ...entries
       .filter((name) => /^\.env\..+/u.test(name) && !tracked.has(name))
-      .sort(),
+      .toSorted(),
   ];
 });
 
