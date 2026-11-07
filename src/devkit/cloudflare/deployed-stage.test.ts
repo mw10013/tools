@@ -15,10 +15,8 @@ import {
   check,
   ensureTrigger,
   replacesWebsite,
-  STAGE_CONFIG_STACK,
   type Trigger,
   triggerDrift,
-  writeStageConfig,
 } from "./deployed-stage.ts";
 
 const TOKEN = "9faa0f15-edb6-4265-aa27-2f944dd4c14e";
@@ -181,8 +179,6 @@ const canonicalAccount = () => {
     [`cf builds triggers list --external-script-id ${TAG}`]: JSON.stringify([
       listed(canonical),
     ]),
-    "cf builds triggers environment-variables list --trigger-uuid 2aad0c41-2dfb-4356-8af6-3d8a705c92fd":
-      "{}",
     [`cf builds workers get ${TAG}`]: JSON.stringify({
       previews_enabled: false,
     }),
@@ -234,15 +230,5 @@ describe("check", () => {
     expect(
       ran.find(({ line }) => line.startsWith("alchemy plan"))?.stageRun,
     ).toBe("check");
-  });
-});
-
-describe("writeStageConfig", () => {
-  it("deploys the writer stack as the stage CLI's config run, so the state store lets it write", async () => {
-    const line = `alchemy deploy --config ${STAGE_CONFIG_STACK} --stage production --yes`;
-    const { spawner, ran } = fakeSpawner({ [line]: "" });
-    const { exit } = await run(writeStageConfig("production"), spawner);
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(ran).toStrictEqual([{ line, stageRun: "config" }]);
   });
 });
