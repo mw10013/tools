@@ -12,9 +12,16 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import {
+  compareVersions,
+  latestOf,
+  listTags,
+  parseVersion,
+  type Tag,
+} from "#devkit/core/release.ts";
+
 import * as Consumer from "./consumer.ts";
 import * as Spec from "./spec.ts";
-import * as Tags from "./tags.ts";
 
 /**
  * `current` and `behind` compare the declared release with the latest, `unknown` when the latest
@@ -50,9 +57,9 @@ export interface Row {
 
 const UNKNOWN = "unknown";
 
-const latestVersion = (tags: Option.Option<readonly Tags.Tag[]>) =>
+const latestVersion = (tags: Option.Option<readonly Tag[]>) =>
   Option.flatMap(tags, (all) =>
-    Option.map(Tags.latestOf(all), (entry) => entry.version),
+    Option.map(latestOf(all), (entry) => entry.version),
   );
 
 const stateOf = (
@@ -65,13 +72,13 @@ const stateOf = (
   const pin = Spec.pinOf(declaration.value.spec);
   if (pin._tag === "Unpinned") return "unpinned";
   const ordered = Option.all({
-    declared: Spec.parseVersion(pin.version),
-    latest: Option.flatMap(latest, Spec.parseVersion),
+    declared: parseVersion(pin.version),
+    latest: Option.flatMap(latest, parseVersion),
   });
   return Option.match(ordered, {
     onNone: () => "unknown",
     onSome: ({ declared, latest: newest }) =>
-      Spec.compareVersions(declared, newest) < 0 ? "behind" : "current",
+      compareVersions(declared, newest) < 0 ? "behind" : "current",
   });
 };
 
@@ -112,7 +119,7 @@ export const rowOf = Effect.fn("Status.rowOf")(function* (
 
 /** The latest release `remote` holds, `None` when it cannot be reached. */
 export const latestOn = (directory: string, remote: string) =>
-  Tags.listTags(directory, remote).pipe(
+  listTags(directory, remote, Spec.TAG_PREFIX).pipe(
     Effect.option,
     Effect.map(latestVersion),
   );

@@ -8,42 +8,14 @@
  */
 import * as Option from "effect/Option";
 
+import { versionOfTag } from "#devkit/core/release.ts";
+
 export const PACKAGE = "@mw10013/devkit";
 export const REPOSITORY = "https://github.com/mw10013/tools.git";
 export const TAG_PREFIX = "devkit-v";
 const SPEC_PREFIX = "github:mw10013/tools";
 
-/** A release version: `major.minor.patch` and nothing after it. Releases carry no prerelease. */
-export interface Version {
-  readonly major: number;
-  readonly minor: number;
-  readonly patch: number;
-}
-
-const STABLE = /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$/u;
-
-export const parseVersion = (text: string): Option.Option<Version> => {
-  const groups = STABLE.exec(text)?.groups;
-  if (groups === undefined) return Option.none();
-  return Option.some({
-    major: Number(groups.major),
-    minor: Number(groups.minor),
-    patch: Number(groups.patch),
-  });
-};
-
-export const compareVersions = (a: Version, b: Version) =>
-  a.major - b.major || a.minor - b.minor || a.patch - b.patch;
-
 export const tagOf = (version: string) => `${TAG_PREFIX}${version}`;
-
-/** The version a `devkit-v<x.y.z>` tag names, `None` for any other name. */
-export const versionOfTag = (tag: string) =>
-  tag.startsWith(TAG_PREFIX)
-    ? Option.filter(Option.some(tag.slice(TAG_PREFIX.length)), (version) =>
-        Option.isSome(parseVersion(version)),
-      )
-    : Option.none<string>();
 
 /** The spec an app declares to depend on a release. */
 export const specOf = (version: string) => `${SPEC_PREFIX}#${tagOf(version)}`;
@@ -72,7 +44,7 @@ export const pinOf = (spec: string): Pin => {
   if (spec !== SPEC_PREFIX && !spec.startsWith(`${SPEC_PREFIX}#`))
     return unpinned("other");
   const ref = spec.slice(SPEC_PREFIX.length + 1);
-  return Option.match(versionOfTag(ref), {
+  return Option.match(versionOfTag(TAG_PREFIX, ref), {
     onSome: (version): Pin => ({ _tag: "Pinned", version }),
     onNone: () =>
       PRERELEASE_TAG.test(ref)

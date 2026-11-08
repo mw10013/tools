@@ -11,9 +11,9 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { latestOf, listTags, requireClean } from "#devkit/core/release.ts";
 import { stream } from "#wt/process.ts";
 
-import { requireClean } from "./checkout.ts";
 import * as Consumer from "./consumer.ts";
 import * as Spec from "./spec.ts";
 import * as Tags from "./tags.ts";
@@ -58,8 +58,8 @@ export const upgrade = Effect.fn("Upgrade.upgrade")(function* <E, R>(
   const declaration = yield* Consumer.declarationOf(app);
   if (Option.isNone(declaration))
     return yield* new NotAConsumerError({ directory: app });
-  const published = yield* Tags.listTags(app, remote);
-  const latest = Tags.latestOf(published);
+  const published = yield* listTags(app, remote, Spec.TAG_PREFIX);
+  const latest = latestOf(published);
   const target = yield* Option.match(requested, {
     onNone: () =>
       Option.match(latest, {

@@ -17,6 +17,7 @@
     "./core/command": "./core/command.ts",
     "./core/test-runs": "./core/test-runs.ts",
     "./core/bosun-endpoint": "./core/bosun-endpoint.ts",
+    "./core/release": "./core/release.ts",
     "./core/lint/rules": "./core/lint/rules.ts",
     "./core/lint/conventions": "./core/lint/conventions.ts",
     "./cloudflare/stage": "./cloudflare/stage.ts",

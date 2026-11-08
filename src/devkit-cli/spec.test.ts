@@ -4,10 +4,10 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   compareVersions,
   parseVersion,
-  pinOf,
-  specOf,
   versionOfTag,
-} from "./spec.ts";
+} from "#devkit/core/release.ts";
+
+import { pinOf, specOf, TAG_PREFIX } from "./spec.ts";
 
 describe("pinOf", () => {
   it("accepts exactly the spec specOf writes", () => {
@@ -41,9 +41,13 @@ describe("versions", () => {
     expect(Option.isSome(parseVersion("0.1.0"))).toBe(true);
     for (const bad of ["v0.1.0", "0.1", "0.1.0-rc.1", "01.a.0", ""])
       expect(Option.isNone(parseVersion(bad)), bad).toBe(true);
-    expect(Option.getOrNull(versionOfTag("devkit-v1.2.3"))).toBe("1.2.3");
-    expect(Option.isNone(versionOfTag("devkit-v1.2.3-rc.1"))).toBe(true);
-    expect(Option.isNone(versionOfTag("v1.2.3"))).toBe(true);
+    expect(Option.getOrNull(versionOfTag(TAG_PREFIX, "devkit-v1.2.3"))).toBe(
+      "1.2.3",
+    );
+    expect(Option.isNone(versionOfTag(TAG_PREFIX, "devkit-v1.2.3-rc.1"))).toBe(
+      true,
+    );
+    expect(Option.isNone(versionOfTag(TAG_PREFIX, "v1.2.3"))).toBe(true);
   });
 
   it("orders numerically, not as text", () => {
