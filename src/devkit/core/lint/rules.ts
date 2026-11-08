@@ -33,26 +33,26 @@ const effectSubpackageBarrel = {
 
 /**
  * A path that climbs out of its folder names its target by the `package.json` `imports` entry
- * instead: `#backend/auth.ts`, not `../../backend/auth.ts`. The entry says which area the
+ * instead: `#area/file.ts`, not `../../area/file.ts`. The entry says which area the
  * import enters, and it stays valid when the importing file moves.
  */
 const parentPath = {
   regex: String.raw`(^|/)\.\.(/|$)`,
   message:
-    "Import across folders through a `#` subpath: #backend/…, #domain/…, #test/….",
+    "Import across folders through a `#` subpath from `package.json` `imports`, not a relative path.",
 };
 
 const aliasPath = {
   regex: "^@/",
   message:
-    "Import across folders through a `#` subpath: #backend/…, #domain/…, #test/….",
+    "Import across folders through a `#` subpath from `package.json` `imports`, not an `@/` alias.",
 };
 
 /** `#root/*` is for the files that must sit at the repository root; an area's file has its own entry. */
 const rootIntoArea = {
   regex: "^#root/(src|test|scripts)/",
   message:
-    "Reach an area's file through its own entry: #backend/…, #test/…, #scripts/….",
+    "Reach an area's file through its own `package.json` `imports` entry, not through `#root/`.",
 };
 
 /**
