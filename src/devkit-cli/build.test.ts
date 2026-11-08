@@ -246,6 +246,30 @@ describe("the package as an app installs it", () => {
     });
   });
 
+  it("exposes core/release, so another repository can cut its own release tags", () => {
+    const entry = manifest.exports["./core/release"];
+    expect(entry).toEqual({
+      types: "./dist/core/release.d.mts",
+      default: "./dist/core/release.mjs",
+    });
+    expect(fs.existsSync(inOutput(entry?.types ?? ""))).toBe(true);
+    const exported = importFrom("@mw10013/devkit/core/release")
+      .stdout.trim()
+      .split(",");
+    expect(exported).toEqual(
+      expect.arrayContaining([
+        "release",
+        "listTags",
+        "latestOf",
+        "parseVersion",
+        "compareVersions",
+        "versionOfTag",
+        "requireClean",
+        "TagTreeMismatchError",
+      ]),
+    );
+  });
+
   it("refuses a module the package does not export", () => {
     for (const internal of [
       "core/orphans",

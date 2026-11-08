@@ -1,90 +1,22 @@
 /**
- * The published releases: the `devkit-v<x.y.z>` tags of a tools repository, read from a remote
- * with `git ls-remote` (no clone, no token for a public repository) and their annotations from a
- * throwaway bare repository.
+ * The annotations of the published `devkit-v<x.y.z>` releases, read from a throwaway bare
+ * repository, and the release log `devkit upgrade` prints from them. The tags themselves are
+ * listed by `listTags` in `@mw10013/devkit/core/release`.
  *
  * @module
  */
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 
-import { capture, run } from "#wt/process.ts";
+import {
+  compareVersions,
+  parseVersion,
+  versionOfTag,
+} from "#devkit/core/release.ts";
+import { run } from "#wt/process.ts";
 
 import * as Spec from "./spec.ts";
-
-export class TagsUnreachableError extends Schema.TaggedError<TagsUnreachableError>()(
-  "TagsUnreachableError",
-  { remote: Schema.String, detail: Schema.String },
-) {
-  override get message() {
-    return `cannot list the devkit releases of ${this.remote}: ${this.detail}`;
-  }
-}
-
-/** A published release. `commit` is the release commit the tag names, which lockfiles pin. */
-export interface Tag {
-  readonly version: string;
-  readonly tag: string;
-  readonly commit: string;
-}
-
-const byVersion = (a: Tag, b: Tag) =>
-  Option.match(
-    Option.all({
-      a: Spec.parseVersion(a.version),
-      b: Spec.parseVersion(b.version),
-    }),
-    { onNone: () => 0, onSome: ({ a, b }) => Spec.compareVersions(a, b) },
-  );
-
-/** The release tags in `refs/tags/` lines of `ls-remote`, oldest first. A peeled `^{}` line names the commit. */
-export const parseTags = (lsRemote: string): readonly Tag[] => {
-  const commits = new Map<string, string>();
-  for (const line of lsRemote.split("\n")) {
-    const [sha = "", ref = ""] = line.split("\t");
-    if (!ref.startsWith("refs/tags/")) continue;
-    const name = ref.slice("refs/tags/".length);
-    const peeled = name.endsWith("^{}");
-    const tag = peeled ? name.slice(0, -3) : name;
-    if (peeled || !commits.has(tag)) commits.set(tag, sha);
-  }
-  return [...commits]
-    .flatMap(([tag, commit]) =>
-      Option.match(Spec.versionOfTag(tag), {
-        onNone: () => [],
-        onSome: (version): Tag[] => [{ version, tag, commit }],
-      }),
-    )
-    .toSorted(byVersion);
-};
-
-/** The releases `remote` (a URL, or `.` for the local tags) holds, oldest first. Fails when it cannot be reached. */
-export const listTags = Effect.fn("Tags.listTags")(function* (
-  directory: string,
-  remote: string,
-) {
-  const output = yield* capture(directory, "git", [
-    "ls-remote",
-    "--tags",
-    remote,
-    `refs/tags/${Spec.TAG_PREFIX}*`,
-  ]).pipe(
-    Effect.mapError(
-      (error) => new TagsUnreachableError({ remote, detail: error.detail }),
-    ),
-  );
-  if (output.exitCode !== 0)
-    return yield* new TagsUnreachableError({
-      remote,
-      detail: output.stderr.trim().split("\n").at(-1) ?? "no output",
-    });
-  return parseTags(output.stdout);
-});
-
-export const latestOf = (tags: readonly Tag[]) =>
-  Option.fromNullishOr(tags.at(-1));
 
 /**
  * Each release's tag annotation, by tag name. The tags are fetched into a throwaway bare
@@ -129,13 +61,13 @@ export const releaseLog = (
   from: Option.Option<string>,
   to: string,
 ) => {
-  const after = Option.flatMap(from, Spec.parseVersion);
-  const upTo = Spec.parseVersion(to);
+  const after = Option.flatMap(from, parseVersion);
+  const upTo = parseVersion(to);
   return [...messages]
     .flatMap(([tag, message]) =>
       Option.match(
-        Option.flatMap(Spec.versionOfTag(tag), (version) =>
-          Option.map(Spec.parseVersion(version), (parsed) => ({
+        Option.flatMap(versionOfTag(Spec.TAG_PREFIX, tag), (version) =>
+          Option.map(parseVersion(version), (parsed) => ({
             tag,
             message,
             parsed,
@@ -148,13 +80,13 @@ export const releaseLog = (
       ({ parsed }) =>
         Option.match(upTo, {
           onNone: () => false,
-          onSome: (limit) => Spec.compareVersions(parsed, limit) <= 0,
+          onSome: (limit) => compareVersions(parsed, limit) <= 0,
         }) &&
         Option.match(after, {
           onNone: () => true,
-          onSome: (floor) => Spec.compareVersions(parsed, floor) > 0,
+          onSome: (floor) => compareVersions(parsed, floor) > 0,
         }),
     )
-    .toSorted((a, b) => Spec.compareVersions(b.parsed, a.parsed))
+    .toSorted((a, b) => compareVersions(b.parsed, a.parsed))
     .map(({ tag, message }) => ({ tag, message }));
 };
