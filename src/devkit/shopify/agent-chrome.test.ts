@@ -1,6 +1,25 @@
 import { assert, describe, it } from "@effect/vitest";
+import { type Browser, chromium } from "playwright";
+import { vi } from "vite-plus/test";
 
-import { isStoreAdmin } from "./agent-chrome.ts";
+import { AGENT_CDP, connectAgentChrome, isStoreAdmin } from "./agent-chrome.ts";
+
+describe("connectAgentChrome", () => {
+  it("connects with noDefaults, leaving other agents' tabs and downloads alone", async () => {
+    const connect = vi
+      .spyOn(chromium, "connectOverCDP")
+      .mockResolvedValue({} as Browser);
+    try {
+      await connectAgentChrome();
+      assert.deepStrictEqual<readonly (readonly unknown[])[]>(
+        connect.mock.calls,
+        [[AGENT_CDP, { noDefaults: true }]],
+      );
+    } finally {
+      connect.mockRestore();
+    }
+  });
+});
 
 describe("isStoreAdmin", () => {
   const store = "sandbox-shop-01";
