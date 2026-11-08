@@ -32,6 +32,13 @@ export class AgentChromeError extends Schema.TaggedError<AgentChromeError>()(
  * and checkout on the machine shares it, so one Shopify login covers every store.
  */
 export const AGENT_CDP = "http://127.0.0.1:9333";
+/**
+ * Connects Playwright to the agent Chrome. `noDefaults` keeps the connection from changing the
+ * browser's download behavior or applying focus and media emulation to the existing tabs, which
+ * other agents own.
+ */
+export const connectAgentChrome = () =>
+  chromium.connectOverCDP(AGENT_CDP, { noDefaults: true });
 /** @see https://specifications.freedesktop.org/basedir-spec/latest/ */
 const AGENT_PROFILE = path.join(
   // oxlint-disable-next-line typescript/prefer-nullish-coalescing -- the XDG spec reads an empty XDG_DATA_HOME as unset
@@ -193,7 +200,7 @@ const agentChromePids = runCommand("pgrep", [
 
 /** `Browser.close` writes the cookie store out before Chrome exits. */
 const closeOverCdp = Effect.acquireUseRelease(
-  Effect.tryPromise(() => chromium.connectOverCDP(AGENT_CDP)),
+  Effect.tryPromise(() => connectAgentChrome()),
   (browser) =>
     Effect.tryPromise(async () => {
       const session = await browser.newBrowserCDPSession();
@@ -299,7 +306,7 @@ export const isStoreAdmin = (
 /** Never fails: it only adds detail to a failure already on its way. */
 const tabShows = (targetId: string) =>
   Effect.acquireUseRelease(
-    Effect.tryPromise(() => chromium.connectOverCDP(AGENT_CDP)),
+    Effect.tryPromise(() => connectAgentChrome()),
     (browser) =>
       Effect.tryPromise(async () => {
         for (const page of browser
@@ -452,7 +459,7 @@ export const exportShopifyAdminAuth = Effect.fn(
   yield* checkShopifyLogin(store);
   const cookies = yield* Effect.acquireUseRelease(
     Effect.tryPromise({
-      try: () => chromium.connectOverCDP(AGENT_CDP),
+      try: () => connectAgentChrome(),
       catch: () =>
         new AgentChromeError({
           message: `Playwright could not connect to ${AGENT_CDP}.`,
