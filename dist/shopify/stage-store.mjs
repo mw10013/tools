@@ -4,9 +4,9 @@ import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Console from "effect/Console";
-import * as FileSystem from "effect/FileSystem";
 // shopify/stage-store.ts
 /**
 * Which store a checkout's dev or e2e stage was set up for. A stage keeps the shops of every store

@@ -1,6 +1,6 @@
 {
   "name": "@mw10013/devkit",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "MIT",
   "bin": {
     "devkit-bosun-port": "./dist/bin/bosun-port.mjs",
@@ -24,6 +24,10 @@
     "./core/bosun-endpoint": {
       "types": "./dist/core/bosun-endpoint.d.mts",
       "default": "./dist/core/bosun-endpoint.mjs"
+    },
+    "./core/release": {
+      "types": "./dist/core/release.d.mts",
+      "default": "./dist/core/release.mjs"
     },
     "./core/lint/rules": {
       "types": "./dist/core/lint/rules.d.mts",

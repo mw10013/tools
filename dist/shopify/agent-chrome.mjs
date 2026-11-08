@@ -5,12 +5,12 @@ import * as Effect from "effect/Effect";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import process from "node:process";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Match from "effect/Match";
 import { homedir } from "node:os";
 import * as Array from "effect/Array";
 import * as Console from "effect/Console";
-import * as FileSystem from "effect/FileSystem";
 import * as Schedule from "effect/Schedule";
 import { chromium } from "playwright";
 // shopify/agent-chrome.ts

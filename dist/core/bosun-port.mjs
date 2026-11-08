@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Config from "effect/Config";
 import * as Console from "effect/Console";
-import * as FileSystem from "effect/FileSystem";
 import { createServer } from "node:net";
 import * as CliError from "effect/cli/CliError";
 import * as Command from "effect/cli/Command";
