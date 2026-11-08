@@ -23,6 +23,12 @@ var AgentChromeError = class extends Schema.TaggedError()("AgentChromeError", { 
 * and checkout on the machine shares it, so one Shopify login covers every store.
 */
 const AGENT_CDP = "http://127.0.0.1:9333";
+/**
+* Connects Playwright to the agent Chrome. `noDefaults` keeps the connection from changing the
+* browser's download behavior or applying focus and media emulation to the existing tabs, which
+* other agents own.
+*/
+const connectAgentChrome = () => chromium.connectOverCDP(AGENT_CDP, { noDefaults: true });
 /** @see https://specifications.freedesktop.org/basedir-spec/latest/ */
 const AGENT_PROFILE = path.join(process.env.XDG_DATA_HOME || path.join(homedir(), ".local", "share"), "agent-chrome-for-testing");
 /**
@@ -102,7 +108,7 @@ const launchAgentChrome = Effect.fn("AgentChrome.launch")(function* (mode, url) 
 */
 const agentChromePids = runCommand("pgrep", ["-f", "remote-debugging-port=9333"]).pipe(Effect.map((stdout) => stdout.split("\n").filter((line) => line !== "")), Effect.orElseSucceed(() => []));
 /** `Browser.close` writes the cookie store out before Chrome exits. */
-const closeOverCdp = Effect.acquireUseRelease(Effect.tryPromise(() => chromium.connectOverCDP(AGENT_CDP)), (browser) => Effect.tryPromise(async () => {
+const closeOverCdp = Effect.acquireUseRelease(Effect.tryPromise(() => connectAgentChrome()), (browser) => Effect.tryPromise(async () => {
 	await (await browser.newBrowserCDPSession()).send("Browser.close").catch(() => void 0);
 }), (browser) => Effect.promise(() => browser.close().catch(() => void 0))).pipe(Effect.ignore);
 const exitedWithin = (within) => agentChromePids.pipe(Effect.repeat({
@@ -152,7 +158,7 @@ const isStoreAdmin = (store, target) => {
 	return hostname === "admin.shopify.com" && (pathname === `/store/${store}` || pathname.startsWith(`/store/${store}/`)) && target.title.includes(" · ") && target.title.endsWith(" · Shopify");
 };
 /** Never fails: it only adds detail to a failure already on its way. */
-const tabShows = (targetId) => Effect.acquireUseRelease(Effect.tryPromise(() => chromium.connectOverCDP(AGENT_CDP)), (browser) => Effect.tryPromise(async () => {
+const tabShows = (targetId) => Effect.acquireUseRelease(Effect.tryPromise(() => connectAgentChrome()), (browser) => Effect.tryPromise(async () => {
 	for (const page of browser.contexts().flatMap((context) => context.pages())) {
 		const session = await page.context().newCDPSession(page);
 		const { targetInfo } = await session.send("Target.getTargetInfo");
@@ -225,7 +231,7 @@ const exportShopifyAdminAuth = Effect.fn("AgentChrome.exportShopifyAdminAuth")(f
 	yield* ensureAgentChrome;
 	yield* checkShopifyLogin(store);
 	const cookies = yield* Effect.acquireUseRelease(Effect.tryPromise({
-		try: () => chromium.connectOverCDP(AGENT_CDP),
+		try: () => connectAgentChrome(),
 		catch: () => new AgentChromeError({ message: `Playwright could not connect to ${AGENT_CDP}.` })
 	}), (browser) => Effect.tryPromise({
 		try: () => Option.match(Array.head(browser.contexts()), {
@@ -248,4 +254,4 @@ const exportShopifyAdminAuth = Effect.fn("AgentChrome.exportShopifyAdminAuth")(f
 	yield* fs.rename(staged, output);
 	return cookies.length;
 });
-export { AGENT_CDP, AgentChromeError, checkShopifyLogin, ensureAgentChrome, exportShopifyAdminAuth, isStoreAdmin, loginAgentChrome, storageStatePath };
+export { AGENT_CDP, AgentChromeError, checkShopifyLogin, connectAgentChrome, ensureAgentChrome, exportShopifyAdminAuth, isStoreAdmin, loginAgentChrome, storageStatePath };

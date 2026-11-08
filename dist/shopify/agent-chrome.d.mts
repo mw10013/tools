@@ -15,6 +15,12 @@ export declare class AgentChromeError extends AgentChromeError_base {}
  */
 export declare const AGENT_CDP = "http://127.0.0.1:9333";
 /**
+ * Connects Playwright to the agent Chrome. `noDefaults` keeps the connection from changing the
+ * browser's download behavior or applying focus and media emulation to the existing tabs, which
+ * other agents own.
+ */
+export declare const connectAgentChrome: () => Promise<import("playwright").Browser>;
+/**
  * A running one is left in whatever mode it is in: switching would close other agents' tabs.
  * Returns whether it was started, because a chrome-devtools server attached to the previous Chrome
  * has to be restarted.
