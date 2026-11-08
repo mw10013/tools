@@ -171,6 +171,42 @@ export class NotAtOriginMainError extends Schema.TaggedError<NotAtOriginMainErro
   }
 }
 
+export class SourceMovedError extends Schema.TaggedError<SourceMovedError>()(
+  "SourceMovedError",
+  { head: Schema.String, now: Schema.String, step: Schema.String },
+) {
+  override get message() {
+    return `HEAD moved from ${this.head.slice(0, 7)} to ${this.now.slice(0, 7)} during ${this.step}: the release would not be the source it names`;
+  }
+}
+
+export class NotReleaseTagError extends Schema.TaggedError<NotReleaseTagError>()(
+  "NotReleaseTagError",
+  { tag: Schema.String, commit: Schema.String, name: Schema.String },
+) {
+  override get message() {
+    return `${this.tag} names ${this.commit.slice(0, 7)}, which is not a ${this.name} release commit: rename or delete that tag, or release under another prefix`;
+  }
+}
+
+export class NotRepositoryRootError extends Schema.TaggedError<NotRepositoryRootError>()(
+  "NotRepositoryRootError",
+  { repo: Schema.String, root: Schema.String },
+) {
+  override get message() {
+    return `${this.repo} is not the top level of its repository ${this.root}: pass the checkout's root as repo`;
+  }
+}
+
+export class SourcePathNotFoundError extends Schema.TaggedError<SourcePathNotFoundError>()(
+  "SourcePathNotFoundError",
+  { sourcePath: Schema.String, head: Schema.String },
+) {
+  override get message() {
+    return `${this.sourcePath} is not in HEAD ${this.head.slice(0, 7)}: sourcePath is relative to the repository root`;
+  }
+}
+
 export class InvalidVersionError extends Schema.TaggedError<InvalidVersionError>()(
   "InvalidVersionError",
   { version: Schema.String },
@@ -200,17 +236,20 @@ export class TagTreeMismatchError extends Schema.TaggedError<TagTreeMismatchErro
 
 /** What one repository's releases are: where they come from, what they are called and what they hold. */
 export interface Options<E, R> {
-  /** The checkout to release from. Its `HEAD` must be `origin/main`, with no change. */
+  /** The checkout's top level to release from. Its `HEAD` must be `origin/main`, with no change. */
   readonly repo: string;
   /** The release commit's first line is `<name> <version>`. */
   readonly name: string;
   /** Each release is the tag `<tagPrefix><version>`. */
   readonly tagPrefix: string;
-  /** The path whose commits since the previous release the message lists. */
+  /** The path, relative to `repo`, whose commits since the previous release the message lists. */
   readonly sourcePath: string;
   /** The tree's `README.md`. */
   readonly readme: (version: string) => string;
-  /** Refuses a source that does not pass its checks. Skipped when the version exists. */
+  /**
+   * Refuses a source that does not pass its checks. Skipped when the version exists. It must leave
+   * the checkout clean and at the same `HEAD`, as must `build`.
+   */
   readonly verify: Effect.Effect<void, E, R>;
   /** Writes the tree, except its README, into `directory`, which does not exist yet. */
   readonly build: (
@@ -225,6 +264,41 @@ const parentOf = (parents: string) =>
   Option.fromNullishOr(parents.trim().split(" ").at(0)).pipe(
     Option.filter((sha) => sha.length > 0),
   );
+
+/** Fails unless `origin`'s `main` is `head`. */
+const requireAtOriginMain = Effect.fnUntraced(function* (
+  repo: string,
+  head: string,
+) {
+  const origin = (yield* git(repo, ["ls-remote", ORIGIN, `refs/heads/${MAIN}`]))
+    .split("\t")
+    .at(0)
+    ?.trim();
+  if (head !== origin)
+    return yield* new NotAtOriginMainError({ head, origin: origin ?? "" });
+});
+
+/**
+ * Fails unless `entry` names a commit this machinery wrote: its message's first line is
+ * `<name> <version>` and it carries a `Source:` line. Any other tag under the prefix (a tag on a
+ * main commit, say) would otherwise become the next release's parent and pull main's history in.
+ */
+const requireReleaseCommit = Effect.fnUntraced(function* (
+  repo: string,
+  name: string,
+  entry: Tag,
+) {
+  const body = yield* git(repo, ["log", "-1", "--format=%B", entry.commit]);
+  if (
+    body.split("\n").at(0) !== `${name} ${entry.version}` ||
+    !SOURCE_LINE.test(body)
+  )
+    return yield* new NotReleaseTagError({
+      tag: entry.tag,
+      commit: entry.commit,
+      name,
+    });
+});
 
 /**
  * Releases `version`. A dry run builds the tree and writes the release commit, but creates no tag
@@ -243,16 +317,27 @@ export const release = Effect.fn("Release.release")(function* <E, R>(
   const run = (...args: string[]) => git(repo, args);
   const tag = `${tagPrefix}${version}`;
 
+  const root = (yield* run("rev-parse", "--show-toplevel")).trim();
+  if ((yield* fs.realPath(repo)) !== (yield* fs.realPath(root)))
+    return yield* new NotRepositoryRootError({ repo, root });
   yield* requireClean(repo);
   const head = (yield* run("rev-parse", "HEAD")).trim();
-  const origin = (yield* run("ls-remote", ORIGIN, `refs/heads/${MAIN}`))
-    .split("\t")
-    .at(0)
-    ?.trim();
-  if (head !== origin)
-    return yield* new NotAtOriginMainError({ head, origin: origin ?? "" });
+  yield* requireAtOriginMain(repo, head);
   if (Option.isNone(parseVersion(version)))
     return yield* new InvalidVersionError({ version });
+  yield* run("cat-file", "-e", `HEAD:${options.sourcePath}`).pipe(
+    Effect.catchTag("CommandError", () =>
+      Effect.fail(
+        new SourcePathNotFoundError({ sourcePath: options.sourcePath, head }),
+      ),
+    ),
+  );
+  /** Fails unless the checkout is still the clean `head` it was when the release began. */
+  const requireUnchanged = Effect.fnUntraced(function* (step: string) {
+    yield* requireClean(repo);
+    const now = (yield* run("rev-parse", "HEAD")).trim();
+    if (now !== head) return yield* new SourceMovedError({ head, now, step });
+  });
 
   yield* run(
     "fetch",
@@ -261,6 +346,9 @@ export const release = Effect.fn("Release.release")(function* <E, R>(
     `refs/tags/${tagPrefix}*:refs/tags/${tagPrefix}*`,
   );
   const published = yield* listTags(repo, ".", tagPrefix);
+  yield* Effect.forEach(published, (entry) =>
+    requireReleaseCommit(repo, options.name, entry),
+  );
   const latest = latestOf(published);
   const existing = published.find((entry) => entry.version === version);
   if (existing === undefined) {
@@ -283,12 +371,13 @@ export const release = Effect.fn("Release.release")(function* <E, R>(
         }),
       });
     yield* options.verify;
+    yield* requireUnchanged("verify");
   }
 
   const tree = yield* Effect.scoped(
     Effect.gen(function* () {
       const work = yield* fs.makeTempDirectoryScoped({
-        prefix: `${options.name}-release-`,
+        prefix: "release-",
       });
       const built = path.join(work, "package");
       yield* options.build(built, version);
@@ -301,10 +390,13 @@ export const release = Effect.fn("Release.release")(function* <E, R>(
       return (yield* git(repo, ["write-tree"], env)).trim();
     }),
   );
+  yield* requireUnchanged("build");
   const files = (yield* run("ls-tree", "-r", "--name-only", tree))
     .split("\n")
     .filter((file) => file.length > 0);
-  const push = run("push", ORIGIN, `refs/tags/${tag}`);
+  const push = requireAtOriginMain(repo, head).pipe(
+    Effect.andThen(run("push", ORIGIN, `refs/tags/${tag}`)),
+  );
 
   if (existing !== undefined) {
     const existingTree = (yield* run("rev-parse", `${tag}^{tree}`)).trim();
@@ -348,7 +440,9 @@ export const release = Effect.fn("Release.release")(function* <E, R>(
     message,
   )).trim();
   // A dry run stops before the tag: a local tag is a ref every worktree of the repository shares.
+  // The tag is created only once origin still holds the source, so a refusal leaves no local tag.
   if (!dryRun) {
+    yield* requireAtOriginMain(repo, head);
     yield* run("tag", "-a", tag, commit, "-m", message);
     yield* push;
   }
