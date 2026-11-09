@@ -13,14 +13,9 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import {
-  describeOrphan,
-  orphansIn,
-  stopOrphans,
-} from "#devkit/core/orphans.ts";
-
 import * as Git from "./git.ts";
 import { firstFree, fromWords, NAME_MAX, type WorktreeName } from "./name.ts";
+import { describeOrphan, orphansIn, stopOrphans } from "./orphans.ts";
 import { run, stream } from "./process.ts";
 import { share } from "./share.ts";
 import * as Teardown from "./teardown.ts";

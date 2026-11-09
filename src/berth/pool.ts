@@ -22,7 +22,7 @@ export const OrganizationId = Schema.String.check(
 ).pipe(Schema.brand("OrganizationId"));
 export type OrganizationId = typeof OrganizationId.Type;
 
-/** A pool store's name is the prefix and two digits; the apps' devkit `StoreName` allows no more. */
+/** A pool store's name is the prefix and two digits; `StoreName` in `@mw10013/shopify-app-workers/dev/worktree` allows no more. */
 export const PoolPrefix = Schema.String.check(
   Schema.isPattern(/^[a-z0-9][a-z0-9-]*-$/u),
 ).pipe(Schema.brand("PoolPrefix"));

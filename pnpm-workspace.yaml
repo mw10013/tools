@@ -1,9 +1,6 @@
 saveExact: true
 runtimeOnFail: ignore
 pmOnFail: ignore
-allowBuilds:
-  # Alchemy depends on workerd; tools only types and plans against Alchemy, never runs a Worker.
-  workerd: false
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@1.4.0
   vite-plus: 1.4.0
@@ -14,3 +11,5 @@ overrides:
 peerDependencyRules:
   allowedVersions:
     vite: "*"
+minimumReleaseAgeExclude:
+  - "@mw10013/rigging@0.4.1"

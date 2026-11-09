@@ -186,10 +186,19 @@ describe("wt rm", () => {
       git(repo, "push", "--quiet", "origin", "main");
       const exit = await create([name]);
       const worktree = Exit.isSuccess(exit) ? exit.value.path : "";
-      const bosun = path.join(worktree, "apps", "x", ".bosun");
-      fs.mkdirSync(path.join(bosun, "dev"), { recursive: true });
-      fs.writeFileSync(path.join(bosun, ".gitignore"), "*\n");
-      fs.writeFileSync(path.join(bosun, "dev", "record.json"), "{}\n");
+      const app = path.join(worktree, "apps", "x");
+      const server = path.join(app, ".rigging", "servers", "dev");
+      fs.mkdirSync(server, { recursive: true });
+      fs.writeFileSync(path.join(app, ".rigging", ".gitignore"), "*\n");
+      fs.writeFileSync(path.join(server, "record.json"), "{}\n");
+      fake("rigging", 0);
+      const bin = path.join(app, "node_modules", ".bin");
+      fs.mkdirSync(bin, { recursive: true });
+      fs.writeFileSync(path.join(app, "node_modules", ".gitignore"), "*\n");
+      fs.symlinkSync(
+        path.join(scratch, "bin", "rigging"),
+        path.join(bin, "rigging"),
+      );
       return worktree;
     };
 
@@ -204,25 +213,23 @@ describe("wt rm", () => {
     });
 
     it("stops a nested app's server and releases its leases from the app's folder, then removes", async () => {
-      fake("bosun", 0);
       fake("berth", 0);
       const worktree = await appWithServer("teardown");
       const removed = await remove("teardown");
       expect(Exit.isSuccess(removed) && removed.value.steps).toStrictEqual([
-        "bosun stop dev in apps/x",
+        "rigging server stop dev in apps/x",
         "berth release in apps/x",
         "git worktree remove",
         "git branch -D",
       ]);
       const app = path.join(worktree, "apps", "x");
       expect(fs.readFileSync(calls, "utf8")).toBe(
-        `bosun stop dev in ${app}\nberth release in ${app}\n`,
+        `rigging server stop dev in ${app}\nberth release in ${app}\n`,
       );
       expect(fs.existsSync(worktree)).toBe(false);
     }, 30_000);
 
     it("keeps the worktree and branch when a teardown step fails", async () => {
-      fake("bosun", 0);
       fake("berth", 1);
       const worktree = await appWithServer("held");
       expect(failureTag(await remove("held"))).toBe("CommandFailedError");
