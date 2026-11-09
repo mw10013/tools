@@ -1,6 +1,5 @@
+import { lint } from "@mw10013/rigging/core/lint/rules";
 import { defineConfig } from "vite-plus";
-
-import { lint } from "#devkit/core/lint/rules.ts";
 
 export default defineConfig(({ command, isPreview }) => {
   if (

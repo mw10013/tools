@@ -1,6 +1,6 @@
 # berth
 
-berth leases Shopify dev stores, so many Shopify apps and checkouts run side by side on one machine without two of them sharing a store. The stores come from `stores.json` at the root of this repository, which `berth pool ensure` writes. A lease belongs to one checkout and one environment, and it lasts until the checkout releases it or its directory disappears. berth leases no ports: each dev server runs under bosun and picks its own.
+berth leases Shopify dev stores, so many Shopify apps and checkouts run side by side on one machine without two of them sharing a store. The stores come from `stores.json` at the root of this repository, which `berth pool ensure` writes. A lease belongs to one checkout and one environment, and it lasts until the checkout releases it or its directory disappears. berth leases no ports: each dev server runs under `rigging server` and picks its own.
 
 ## Usage
 
@@ -62,7 +62,7 @@ A typed failure exits 1 and prints `{ "berth": 1, "error": { "_tag": "...", "mes
 }
 ```
 
-`organization` is the numeric id of the Shopify organization that owns the stores. Pool store names are `prefix` and two digits, `00` to `99`, because the apps' devkit `StoreName` allows only two. `stores` lists handles, and berth turns each into the domain `<handle>.myshopify.com`. A file that lists a store twice fails to decode with `SettingsInvalidError`, which names the store, in every command. Every listed store was checked by `pool ensure` to exist in the organization as a dev store on the basic plan. berth reads the file from beside its own source at startup. `acquire`, `show`, `release` and `list` read only `stores` and make no Shopify call.
+`organization` is the numeric id of the Shopify organization that owns the stores. Pool store names are `prefix` and two digits, `00` to `99`, because `StoreName` in `@mw10013/shopify-app-workers/dev/worktree` allows only two. `stores` lists handles, and berth turns each into the domain `<handle>.myshopify.com`. A file that lists a store twice fails to decode with `SettingsInvalidError`, which names the store, in every command. Every listed store was checked by `pool ensure` to exist in the organization as a dev store on the basic plan. berth reads the file from beside its own source at startup. `acquire`, `show`, `release` and `list` read only `stores` and make no Shopify call.
 
 ### pool ensure
 
@@ -119,7 +119,7 @@ Machine policy is `~/.config/berth/config.json`, and its one field is optional. 
 
 **Transitions are pure.** `domain.ts` holds `reconcile`, `release`, `sweep` and `pickStore`. The shell gathers facts first (which checkouts exist, the clock), so a retried transition does no I/O beyond them.
 
-**No ports.** berth leased ports until 2026-11-03. Every app's dev server now runs under bosun, binds a port it picks, and publishes it, so berth dropped `ports`, `--bindable`, `PortBusyError`, `PortsExhaustedError`, the port range, and the reserved ports.
+**No ports.** berth leased ports until 2026-11-03. Every app's dev server now runs under `rigging server`, binds a port it picks, and publishes it, so berth dropped `ports`, `--bindable`, `PortBusyError`, `PortsExhaustedError`, the port range, and the reserved ports.
 
 **Stores.** `pickStore` takes the first store in `stores.json` that no lease holds. Any env of any project may lease any listed store. `pool ensure` creates stores but never deletes one, because store domains are global and permanent. `stores.json` lists only stores that `pool ensure` checked exist as dev stores on basic, so it writes a created store only after Shopify returns its exact domain. The decisions are pure: `planPool` in `pool.ts` takes the listed stores, the org's stores, the prefix and the count, and returns the adoptions and the names to create, or the typed failure. The shell runs the CLI and writes the file. A store is known by its domain, which Shopify never changes after creation ([Development stores](https://shopify.dev/docs/apps/build/stores/development-stores)), not by its name, which can differ from it: the org's `stress-shop-01.myshopify.com` is named `Stress Shop 01`.
 
@@ -135,8 +135,8 @@ Machine policy is `~/.config/berth/config.json`, and its one field is optional. 
 
 Consumers are separate repos. They run `berth` and decode the JSON with their own small schema naming only the fields they read. `berth` reaches PATH through a shim, `~/.local/bin/berth`, that runs `vpx ~/projects/tools/berth.ts`.
 
-- A Shopify app's dev server calls `berth acquire <env>` (devkit's `src/devkit/shopify/berth.ts`) and passes the store's handle to `--store` and `store.config` to `--config`.
-- A new worktree takes no lease: its first `acquire` comes from `vp run dev` or e2e. `wt rm` runs `berth release` in every folder of the worktree with a `berth.json`, after `bosun stop` for each of that worktree's servers, and before `git worktree remove`. With no lease held, `release` succeeds and releases nothing. A worktree removed some other way loses its leases at the next `acquire` or `release` on the machine (**Stale sweep**).
+- A Shopify app's dev server calls `berth acquire <env>` (`@mw10013/shopify-app-workers/dev/berth`) and passes the store's handle to `--store` and `store.config` to `--config`.
+- A new worktree takes no lease: its first `acquire` comes from `vp run dev` or e2e. `wt rm` runs `berth release` in every folder of the worktree with a `berth.json`, after `rigging server stop` for each of that worktree's servers, and before `git worktree remove`. With no lease held, `release` succeeds and releases nothing. A worktree removed some other way loses its leases at the next `acquire` or `release` on the machine (**Stale sweep**).
 - A command that stops a server calls `berth show <env>`, not `acquire`: no lease means nothing of this checkout's runs on one, and a checkout is not handed a lease on its way out.
 - Playwright configs call `berth acquire <env>` for the store their tests run against.
 

@@ -1,10 +1,9 @@
 /**
  * What `wt rm` stops and releases before it removes a worktree, found on disk
- * rather than asked of the repo: a server leaves `.bosun/<name>/record.json`
- * (bosun) or `.rigging/servers/<name>/record.json` (`rigging server`) in its
- * app's folder, and a berth checkout has a `berth.json`, at any depth, so a
- * single-app repo and a monorepo's apps tear down alike. While apps move from
- * bosun to `@mw10013/rigging`, a worktree can hold either.
+ * rather than asked of the repo: a `rigging server` leaves
+ * `.rigging/servers/<name>/record.json` in its app's folder, and a berth
+ * checkout has a `berth.json`, at any depth, so a single-app repo and a
+ * monorepo's apps tear down alike.
  *
  * @module
  */
@@ -14,12 +13,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import { BOSUN_DIRECTORY } from "#bosun/domain.ts";
-
 import { stream } from "./process.ts";
 
 export type Teardown =
-  | { readonly kind: "bosun-stop"; readonly dir: string; readonly name: string }
   | {
       readonly kind: "rigging-stop";
       readonly dir: string;
@@ -62,23 +58,15 @@ export const discover = Effect.fn("Teardown.discover")(function* (
         if (entry.type === "File" && entry.name === "berth.json")
           releases.push({ kind: "berth-release", dir });
         if (entry.type !== "Directory" || SKIPPED.has(entry.name)) continue;
-        const servers =
-          entry.name === BOSUN_DIRECTORY
-            ? { kind: "bosun-stop" as const, folder: full }
-            : entry.name === RIGGING_DIRECTORY
-              ? {
-                  kind: "rigging-stop" as const,
-                  folder: path.join(full, RIGGING_SERVERS),
-                }
-              : undefined;
-        if (servers === undefined) {
+        if (entry.name !== RIGGING_DIRECTORY) {
           yield* visit(full);
           continue;
         }
-        for (const server of yield* entriesOf(servers.folder)) {
-          const record = path.join(servers.folder, server.name, "record.json");
+        const servers = path.join(full, RIGGING_SERVERS);
+        for (const server of yield* entriesOf(servers)) {
+          const record = path.join(servers, server.name, "record.json");
           if (yield* fs.exists(record).pipe(Effect.orElseSucceed(() => false)))
-            stops.push({ kind: servers.kind, dir, name: server.name });
+            stops.push({ kind: "rigging-stop", dir, name: server.name });
         }
       }
     });
@@ -141,10 +129,7 @@ export const run = Effect.fn("Teardown.run")(function* (
   const steps: string[] = [];
   for (const action of actions) {
     const where = path.relative(worktree, action.dir) || ".";
-    if (action.kind === "bosun-stop") {
-      yield* stream(action.dir, "bosun", ["stop", action.name]);
-      steps.push(`bosun stop ${action.name} in ${where}`);
-    } else if (action.kind === "rigging-stop") {
+    if (action.kind === "rigging-stop") {
       const fs = yield* FileSystem.FileSystem;
       const bin = path.join(action.dir, "node_modules", ".bin", "rigging");
       if (yield* fs.exists(bin).pipe(Effect.orElseSucceed(() => false))) {
