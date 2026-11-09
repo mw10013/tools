@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -62,6 +63,20 @@ describe("Teardown.discover", () => {
     ]);
   });
 
+  it("stops rigging servers alongside bosun ones, before releasing leases", async () => {
+    write("berth.json");
+    write(".bosun/dev/record.json");
+    write(".rigging/servers/dev/record.json");
+    write(".rigging/servers/e2e/record.json");
+    write(".rigging/servers/stale/log/current", "");
+    expect(await discover()).toStrictEqual([
+      { kind: "bosun-stop", dir: root, name: "dev" },
+      { kind: "rigging-stop", dir: root, name: "dev" },
+      { kind: "rigging-stop", dir: root, name: "e2e" },
+      { kind: "berth-release", dir: root },
+    ]);
+  });
+
   it("skips node_modules, .git and symlinked folders", async () => {
     write("node_modules/pkg/berth.json");
     write("node_modules/pkg/.bosun/dev/record.json");
@@ -75,6 +90,52 @@ describe("Teardown.discover", () => {
       expect(await discover()).toStrictEqual([]);
     } finally {
       fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+});
+
+const run = (actions: readonly Teardown.Teardown[]) =>
+  Effect.runPromise(
+    Teardown.run(actions, root).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+describe("Teardown.run on a rigging server", () => {
+  it("runs the app's own rigging bin", async () => {
+    const calls = path.join(root, "calls");
+    write("node_modules/.bin/rigging", `#!/bin/sh\necho "$@" >> ${calls}\n`);
+    fs.chmodSync(path.join(root, "node_modules/.bin/rigging"), 0o755);
+    expect(
+      await run([{ kind: "rigging-stop", dir: root, name: "dev" }]),
+    ).toStrictEqual(["rigging server stop dev in ."]);
+    expect(fs.readFileSync(calls, "utf8")).toBe("server stop dev\n");
+  });
+
+  it("stops the recorded process group when the app has no rigging bin", async () => {
+    const server = spawn("sleep", ["60"], { detached: true, stdio: "ignore" });
+    const pid = server.pid ?? 0;
+    write(
+      ".rigging/servers/dev/record.json",
+      JSON.stringify({ pid, group: pid }),
+    );
+    try {
+      expect(
+        await run([{ kind: "rigging-stop", dir: root, name: "dev" }]),
+      ).toStrictEqual(["stopped dev from its record in ."]);
+      expect(alive(pid)).toBe(false);
+      expect(fs.existsSync(path.join(root, ".rigging/servers/dev"))).toBe(
+        false,
+      );
+    } finally {
+      if (alive(pid)) process.kill(-pid, "SIGKILL");
     }
   });
 });

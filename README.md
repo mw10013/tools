@@ -361,7 +361,10 @@ link pointing elsewhere, fails rather than being replaced. `rm` removes only lan
 beyond origin's default branch, or a merged pull request whose head is the
 branch's tip, which is what a squash merge leaves. It then tears down every app
 in the worktree, at any depth outside `node_modules` and `.git`: `bosun stop
-<name>` in each folder whose `.bosun/<name>/record.json` exists, then `berth
+<name>` in each folder whose `.bosun/<name>/record.json` exists, `rigging server
+stop <name>` with that folder's own `node_modules/.bin/rigging` for each
+`.rigging/servers/<name>/record.json` (or, with no such bin, a stop of the
+recorded process group), then `berth
 release` in each folder with a `berth.json`. A failed step stops `rm` before it
 removes anything. Then it stops what the worktree left running, removes the
 worktree and deletes the branch. After `wt rm` from inside the worktree, `cd`

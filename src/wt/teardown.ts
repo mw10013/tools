@@ -1,14 +1,18 @@
 /**
  * What `wt rm` stops and releases before it removes a worktree, found on disk
- * rather than asked of the repo: a bosun server leaves `.bosun/<name>/record.json`
- * in its app's folder, and a berth checkout has a `berth.json`, at any depth, so a
- * single-app repo and a monorepo's apps tear down alike.
+ * rather than asked of the repo: a server leaves `.bosun/<name>/record.json`
+ * (bosun) or `.rigging/servers/<name>/record.json` (`rigging server`) in its
+ * app's folder, and a berth checkout has a `berth.json`, at any depth, so a
+ * single-app repo and a monorepo's apps tear down alike. While apps move from
+ * bosun to `@mw10013/rigging`, a worktree can hold either.
  *
  * @module
  */
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 
 import { BOSUN_DIRECTORY } from "#bosun/domain.ts";
 
@@ -16,7 +20,16 @@ import { stream } from "./process.ts";
 
 export type Teardown =
   | { readonly kind: "bosun-stop"; readonly dir: string; readonly name: string }
+  | {
+      readonly kind: "rigging-stop";
+      readonly dir: string;
+      readonly name: string;
+    }
   | { readonly kind: "berth-release"; readonly dir: string };
+
+/** `rigging server`'s state folder in an app, per rigging's `docs/server.md`. */
+const RIGGING_DIRECTORY = ".rigging";
+const RIGGING_SERVERS = "servers";
 
 /** Never descended: installed packages and git's own data hold no checkout's servers. */
 const SKIPPED = new Set(["node_modules", ".git"]);
@@ -25,9 +38,9 @@ const byName = (entries: readonly FileSystem.DirectoryEntry[]) =>
   entries.toSorted((a, b) => a.name.localeCompare(b.name));
 
 /**
- * Every bosun stop comes before every berth release: berth refuses to release a
- * lease while the checkout's `shopify app dev`, which a bosun server runs, is
- * still on its store. Symlinks are not followed, so the shared `refs` link
+ * Every server stop comes before every berth release: berth refuses to release a
+ * lease while the checkout's `shopify app dev`, which a server runs, is still on
+ * its store. Symlinks are not followed, so the shared `refs` link
  * never reaches into the main checkout.
  */
 export const discover = Effect.fn("Teardown.discover")(function* (
@@ -49,19 +62,74 @@ export const discover = Effect.fn("Teardown.discover")(function* (
         if (entry.type === "File" && entry.name === "berth.json")
           releases.push({ kind: "berth-release", dir });
         if (entry.type !== "Directory" || SKIPPED.has(entry.name)) continue;
-        if (entry.name !== BOSUN_DIRECTORY) {
+        const servers =
+          entry.name === BOSUN_DIRECTORY
+            ? { kind: "bosun-stop" as const, folder: full }
+            : entry.name === RIGGING_DIRECTORY
+              ? {
+                  kind: "rigging-stop" as const,
+                  folder: path.join(full, RIGGING_SERVERS),
+                }
+              : undefined;
+        if (servers === undefined) {
           yield* visit(full);
           continue;
         }
-        for (const server of yield* entriesOf(full)) {
-          const record = path.join(full, server.name, "record.json");
+        for (const server of yield* entriesOf(servers.folder)) {
+          const record = path.join(servers.folder, server.name, "record.json");
           if (yield* fs.exists(record).pipe(Effect.orElseSucceed(() => false)))
-            stops.push({ kind: "bosun-stop", dir, name: server.name });
+            stops.push({ kind: servers.kind, dir, name: server.name });
         }
       }
     });
   yield* visit(worktree);
   return [...stops, ...releases] as readonly Teardown[];
+});
+
+const RiggingRecord = Schema.fromJsonString(
+  Schema.Struct({ pid: Schema.Int, group: Schema.Int }),
+);
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const signal = (pid: number, name: NodeJS.Signals) => {
+  try {
+    process.kill(pid, name);
+  } catch {
+    // Already gone.
+  }
+};
+
+/**
+ * Stops a server from its record alone, for an app whose `node_modules` no
+ * longer holds `rigging`: SIGTERM to the command's group and the runner, then
+ * SIGKILL after 30 seconds, as `rigging server stop` does.
+ */
+const stopFromRecord = Effect.fn("Teardown.stopFromRecord")(function* (
+  serverDir: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const record = yield* Schema.decodeEffect(RiggingRecord)(
+    yield* fs.readFileString(path.join(serverDir, "record.json")),
+  );
+  const running = () => alive(-record.group) || alive(record.pid);
+  signal(-record.group, "SIGTERM");
+  signal(record.pid, "SIGTERM");
+  for (let waited = 0; running() && waited < 30; waited += 1)
+    yield* Effect.sleep(Duration.seconds(1));
+  if (running()) {
+    signal(-record.group, "SIGKILL");
+    signal(record.pid, "SIGKILL");
+  }
+  yield* fs.remove(serverDir, { recursive: true, force: true });
 });
 
 /** Stops at the first failure, so `wt rm` removes nothing that still runs or holds a lease. */
@@ -76,6 +144,23 @@ export const run = Effect.fn("Teardown.run")(function* (
     if (action.kind === "bosun-stop") {
       yield* stream(action.dir, "bosun", ["stop", action.name]);
       steps.push(`bosun stop ${action.name} in ${where}`);
+    } else if (action.kind === "rigging-stop") {
+      const fs = yield* FileSystem.FileSystem;
+      const bin = path.join(action.dir, "node_modules", ".bin", "rigging");
+      if (yield* fs.exists(bin).pipe(Effect.orElseSucceed(() => false))) {
+        yield* stream(action.dir, bin, ["server", "stop", action.name]);
+        steps.push(`rigging server stop ${action.name} in ${where}`);
+      } else {
+        yield* stopFromRecord(
+          path.join(
+            action.dir,
+            RIGGING_DIRECTORY,
+            RIGGING_SERVERS,
+            action.name,
+          ),
+        );
+        steps.push(`stopped ${action.name} from its record in ${where}`);
+      }
     } else {
       yield* stream(action.dir, "berth", ["release"]);
       steps.push(`berth release in ${where}`);
