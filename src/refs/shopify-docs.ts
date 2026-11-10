@@ -669,6 +669,18 @@ const localizeImages = Effect.fn("ShopifyDocs.localizeImages")(function* (
     [...names],
     ([url, name]) =>
       requestBytes(url).pipe(
+        Effect.catch((error) => {
+          const prefix =
+            "https://shopify-assets.shopifycdn.com/shopifycloud/shopify-dev/development/assets/assets/images/templated-apis-screenshots/";
+          return url.startsWith(prefix)
+            ? requestBytes(
+                url.replace(
+                  "/shopify-dev/development/",
+                  "/shopify-dev/production/",
+                ),
+              )
+            : Effect.fail(error);
+        }),
         Effect.flatMap((bytes) =>
           fs.writeFile(path.join(assetsDir, name), bytes),
         ),
