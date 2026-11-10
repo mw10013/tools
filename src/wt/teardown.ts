@@ -1,9 +1,8 @@
 /**
- * What `wt rm` stops and releases before it removes a worktree, found on disk
- * rather than asked of the repo: a `rigging server` leaves
- * `.rigging/servers/<name>/record.json` in its app's folder, and a berth
- * checkout has a `berth.json`, at any depth, so a single-app repo and a
- * monorepo's apps tear down alike.
+ * What `wt rm` stops before it removes a worktree, found on disk rather than
+ * asked of the repo: a `rigging server` leaves
+ * `.rigging/servers/<name>/record.json` in its app's folder, at any depth, so
+ * a single-app repo and a monorepo's apps tear down alike.
  *
  * @module
  */
@@ -15,13 +14,11 @@ import * as Schema from "effect/Schema";
 
 import { stream } from "./process.ts";
 
-export type Teardown =
-  | {
-      readonly kind: "rigging-stop";
-      readonly dir: string;
-      readonly name: string;
-    }
-  | { readonly kind: "berth-release"; readonly dir: string };
+export interface Teardown {
+  readonly kind: "rigging-stop";
+  readonly dir: string;
+  readonly name: string;
+}
 
 /** `rigging server`'s state folder in an app, per rigging's `docs/server.md`. */
 const RIGGING_DIRECTORY = ".rigging";
@@ -34,10 +31,8 @@ const byName = (entries: readonly FileSystem.DirectoryEntry[]) =>
   entries.toSorted((a, b) => a.name.localeCompare(b.name));
 
 /**
- * Every server stop comes before every berth release: berth refuses to release a
- * lease while the checkout's `shopify app dev`, which a server runs, is still on
- * its store. Symlinks are not followed, so the shared `refs` link
- * never reaches into the main checkout.
+ * Symlinks are not followed, so the shared `refs` link never reaches into the
+ * main checkout.
  */
 export const discover = Effect.fn("Teardown.discover")(function* (
   worktree: string,
@@ -50,13 +45,10 @@ export const discover = Effect.fn("Teardown.discover")(function* (
       Effect.orElseSucceed(() => []),
     );
   const stops: Teardown[] = [];
-  const releases: Teardown[] = [];
   const visit = (dir: string): Effect.Effect<void> =>
     Effect.gen(function* () {
       for (const entry of yield* entriesOf(dir)) {
         const full = path.join(dir, entry.name);
-        if (entry.type === "File" && entry.name === "berth.json")
-          releases.push({ kind: "berth-release", dir });
         if (entry.type !== "Directory" || SKIPPED.has(entry.name)) continue;
         if (entry.name !== RIGGING_DIRECTORY) {
           yield* visit(full);
@@ -71,7 +63,7 @@ export const discover = Effect.fn("Teardown.discover")(function* (
       }
     });
   yield* visit(worktree);
-  return [...stops, ...releases] as readonly Teardown[];
+  return stops;
 });
 
 const RiggingRecord = Schema.fromJsonString(
@@ -120,7 +112,7 @@ const stopFromRecord = Effect.fn("Teardown.stopFromRecord")(function* (
   yield* fs.remove(serverDir, { recursive: true, force: true });
 });
 
-/** Stops at the first failure, so `wt rm` removes nothing that still runs or holds a lease. */
+/** Stops at the first failure, so `wt rm` removes nothing that still runs. */
 export const run = Effect.fn("Teardown.run")(function* (
   actions: readonly Teardown[],
   worktree: string,
@@ -129,26 +121,16 @@ export const run = Effect.fn("Teardown.run")(function* (
   const steps: string[] = [];
   for (const action of actions) {
     const where = path.relative(worktree, action.dir) || ".";
-    if (action.kind === "rigging-stop") {
-      const fs = yield* FileSystem.FileSystem;
-      const bin = path.join(action.dir, "node_modules", ".bin", "rigging");
-      if (yield* fs.exists(bin).pipe(Effect.orElseSucceed(() => false))) {
-        yield* stream(action.dir, bin, ["server", "stop", action.name]);
-        steps.push(`rigging server stop ${action.name} in ${where}`);
-      } else {
-        yield* stopFromRecord(
-          path.join(
-            action.dir,
-            RIGGING_DIRECTORY,
-            RIGGING_SERVERS,
-            action.name,
-          ),
-        );
-        steps.push(`stopped ${action.name} from its record in ${where}`);
-      }
+    const fs = yield* FileSystem.FileSystem;
+    const bin = path.join(action.dir, "node_modules", ".bin", "rigging");
+    if (yield* fs.exists(bin).pipe(Effect.orElseSucceed(() => false))) {
+      yield* stream(action.dir, bin, ["server", "stop", action.name]);
+      steps.push(`rigging server stop ${action.name} in ${where}`);
     } else {
-      yield* stream(action.dir, "berth", ["release"]);
-      steps.push(`berth release in ${where}`);
+      yield* stopFromRecord(
+        path.join(action.dir, RIGGING_DIRECTORY, RIGGING_SERVERS, action.name),
+      );
+      steps.push(`stopped ${action.name} from its record in ${where}`);
     }
   }
   return steps;

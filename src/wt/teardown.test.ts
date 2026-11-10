@@ -33,45 +33,46 @@ const discover = () =>
   );
 
 describe("Teardown.discover", () => {
-  it("finds nothing in a worktree with no servers and no berth.json", async () => {
+  it("finds nothing in a worktree with no servers", async () => {
     write("package.json");
     write("src/index.ts", "");
     expect(await discover()).toStrictEqual([]);
   });
 
-  it("stops a single-app root's recorded servers, then releases its leases", async () => {
-    write("berth.json");
+  it("stops a single-app root's recorded servers", async () => {
     write(".rigging/servers/dev/record.json");
     write(".rigging/servers/e2e/record.json");
     write(".rigging/servers/stale/log/current", "");
     expect(await discover()).toStrictEqual([
       { kind: "rigging-stop", dir: root, name: "dev" },
       { kind: "rigging-stop", dir: root, name: "e2e" },
-      { kind: "berth-release", dir: root },
     ]);
   });
 
-  it("finds a monorepo app's servers and berth.json in its own folder", async () => {
+  it("finds a monorepo app's servers in its own folder", async () => {
     const app = path.join(root, "apps", "x");
     write("package.json");
-    write("apps/x/berth.json");
     write("apps/x/.rigging/servers/dev/record.json");
     write("apps/y/package.json");
     expect(await discover()).toStrictEqual([
       { kind: "rigging-stop", dir: app, name: "dev" },
-      { kind: "berth-release", dir: app },
     ]);
   });
 
   it("skips node_modules, .git and symlinked folders", async () => {
-    write("node_modules/pkg/berth.json");
     write("node_modules/pkg/.rigging/servers/dev/record.json");
-    write(".git/berth.json");
+    write(".git/.rigging/servers/dev/record.json");
     const elsewhere = fs.realpathSync(
       fs.mkdtempSync(path.join(os.tmpdir(), "wt-teardown-link-")),
     );
     try {
-      fs.writeFileSync(path.join(elsewhere, "berth.json"), "{}");
+      fs.mkdirSync(path.join(elsewhere, ".rigging/servers/dev"), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(elsewhere, ".rigging/servers/dev/record.json"),
+        "{}",
+      );
       fs.symlinkSync(elsewhere, path.join(root, "refs"));
       expect(await discover()).toStrictEqual([]);
     } finally {
