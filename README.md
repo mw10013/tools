@@ -380,6 +380,6 @@ exec vpx /Users/mw/projects/tools/wt.ts "$@"
 The dev tooling the apps share is not here. `@mw10013/rigging` on npm (source in
 [mw10013/rigging](https://github.com/mw10013/rigging)) holds the core and
 Cloudflare layers, the house lint rules and `rigging server`, and
-`@mw10013/shopify-app-workers` holds the Shopify layer. tools lints itself with
+`@mw10013/shopify-app-cloudflare` holds the Shopify layer. tools lints itself with
 rigging's rules: `vite.config.ts` spreads `lint` from
 `@mw10013/rigging/core/lint/rules`.
