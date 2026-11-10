@@ -62,7 +62,7 @@ A typed failure exits 1 and prints `{ "berth": 1, "error": { "_tag": "...", "mes
 }
 ```
 
-`organization` is the numeric id of the Shopify organization that owns the stores. Pool store names are `prefix` and two digits, `00` to `99`, because `StoreName` in `@mw10013/shopify-app-workers/dev/worktree` allows only two. `stores` lists handles, and berth turns each into the domain `<handle>.myshopify.com`. A file that lists a store twice fails to decode with `SettingsInvalidError`, which names the store, in every command. Every listed store was checked by `pool ensure` to exist in the organization as a dev store on the basic plan. berth reads the file from beside its own source at startup. `acquire`, `show`, `release` and `list` read only `stores` and make no Shopify call.
+`organization` is the numeric id of the Shopify organization that owns the stores. Pool store names are `prefix` and two digits, `00` to `99`, because `StoreName` in `@mw10013/shopify-app-cloudflare/dev/worktree` allows only two. `stores` lists handles, and berth turns each into the domain `<handle>.myshopify.com`. A file that lists a store twice fails to decode with `SettingsInvalidError`, which names the store, in every command. Every listed store was checked by `pool ensure` to exist in the organization as a dev store on the basic plan. berth reads the file from beside its own source at startup. `acquire`, `show`, `release` and `list` read only `stores` and make no Shopify call.
 
 ### pool ensure
 
@@ -135,7 +135,7 @@ Machine policy is `~/.config/berth/config.json`, and its one field is optional. 
 
 Consumers are separate repos. They run `berth` and decode the JSON with their own small schema naming only the fields they read. `berth` reaches PATH through a shim, `~/.local/bin/berth`, that runs `vpx ~/projects/tools/berth.ts`.
 
-- A Shopify app's dev server calls `berth acquire <env>` (`@mw10013/shopify-app-workers/dev/berth`) and passes the store's handle to `--store` and `store.config` to `--config`.
+- A Shopify app's dev server calls `berth acquire <env>` (`@mw10013/shopify-app-cloudflare/dev/berth`) and passes the store's handle to `--store` and `store.config` to `--config`.
 - A new worktree takes no lease: its first `acquire` comes from `vp run dev` or e2e. `wt rm` runs `berth release` in every folder of the worktree with a `berth.json`, after `rigging server stop` for each of that worktree's servers, and before `git worktree remove`. With no lease held, `release` succeeds and releases nothing. A worktree removed some other way loses its leases at the next `acquire` or `release` on the machine (**Stale sweep**).
 - A command that stops a server calls `berth show <env>`, not `acquire`: no lease means nothing of this checkout's runs on one, and a checkout is not handed a lease on its way out.
 - Playwright configs call `berth acquire <env>` for the store their tests run against.
