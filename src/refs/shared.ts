@@ -237,6 +237,20 @@ export const cloudflareSync = Effect.fn("Shared.cloudflareSync")(function* (
   return `cloudflare-docs: downloaded production (${destination})`;
 });
 
+export const shopifySessionStorageDoStatus = (root: string) =>
+  presence(root, "shopify-session-storage-do");
+
+export const shopifySessionStorageDoSync = Effect.fn(
+  "Shared.shopifySessionStorageDoSync",
+)(function* (root: string) {
+  const destination = yield* download(
+    root,
+    "shopify-session-storage-do",
+    "https://codeload.github.com/optizio/shopify-session-storage-do/tar.gz/refs/heads/main",
+  );
+  return `shopify-session-storage-do: downloaded main (${destination})`;
+});
+
 export const shopifyStatus = (root: string) => presence(root, "shopify-cli");
 
 export const shopifySync = Effect.fn("Shared.shopifySync")(function* (
