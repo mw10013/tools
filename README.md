@@ -200,94 +200,6 @@ With no argument, `play` chooses the newest recording under `tmp/tts/`; a number
 selects that daily sequence on the newest date containing it. A file path resolves
 relative to this checkout. `mpv --audio-device=help` lists available devices.
 
-## Dev stores
-
-`berth` leases Shopify dev stores from the pool in `stores.json` to each
-checkout and env, so no two Shopify app checkouts on one machine share a store.
-Ports are not berth's: each dev server runs under `rigging server` (from
-[`@mw10013/rigging`](https://www.npmjs.com/package/@mw10013/rigging)) and picks
-its own. The design is in [docs/berth.md](docs/berth.md).
-
-### Put berth on PATH
-
-Consumers in other repos call `berth`, so create a shim at `~/.local/bin/berth`:
-
-```sh
-#!/bin/sh
-exec vpx /Users/mw/projects/tools/berth.ts "$@"
-```
-
-Make it executable with `chmod +x ~/.local/bin/berth`, and keep `~/.local/bin`
-on PATH. Inside this repository, `vp run berth` runs the same entry point,
-though `vp run` adds a task banner to stdout.
-
-### Declare what a project needs
-
-Commit a `berth.json` at the project root. Each env names the app config its
-`shopify app dev` runs with. An env without `store` is rejected. A
-`store.pool` field is accepted and ignored:
-
-```json
-{
-  "project": "baton",
-  "envs": {
-    "dev": { "store": { "config": "shopify.app.toml" } },
-    "e2e": { "store": { "config": "shopify.app.e2e.toml" } }
-  }
-}
-```
-
-### Lease, release and list
-
-```sh
-berth acquire dev                         # print this checkout's dev lease as JSON
-berth acquire dev --adopt store=mw10013-pool-01
-berth show dev                            # this checkout's dev lease, or null; never creates one
-berth release                             # free this checkout's leases
-berth list                                # every lease and the store pool
-berth list --json
-```
-
-`berth` finds the checkout by walking up from the current directory to the
-nearest `berth.json`. `acquire` returns the same lease on every run, and a
-rerun writes nothing. A typed failure exits 1 with
-`{ "berth": 1, "error": { "_tag", "message", ... } }` on stdout. A usage error
-exits 2.
-
-- `StorePoolExhaustedError`: every store in `stores.json` is leased. Release
-  a lease, or grow the pool with `berth pool ensure <count>`. berth never
-  deletes a store.
-- `LeaseInUseError`: this checkout's `shopify app dev` runs on the store. Stop
-  it, then release.
-
-A lease whose checkout directory is gone ends at the next `acquire` or
-`release` anywhere on the machine. berth runs no `shopify app dev clean`. The
-next holder's `shopify app dev` replaces the store's dev preview.
-
-### The store pool
-
-`stores.json` at the repository root names the Shopify organization, the pool's
-name prefix and the store handles, such as `"mw10013-pool-00"`. berth leases
-`<handle>.myshopify.com` for each, first free in list order. Only
-`berth pool ensure` writes it:
-
-```sh
-berth pool ensure                         # check every listed store, adopt strays
-berth pool ensure 16                      # also create stores until the pool holds 16
-```
-
-It creates each store with the Shopify CLI, then lists it, so commit
-`stores.json` after a run that changed it. See
-[docs/berth.md](docs/berth.md#pool-ensure).
-
-### Machine config
-
-`$XDG_CONFIG_HOME/berth/config.json` (default `~/.config/berth/config.json`)
-sets machine policy. Its one field, `machine`, is optional and defaults to the
-host name without `.local`. The ledger lives in `$XDG_STATE_HOME/berth/ledger/` (default
-`~/.local/state/berth/ledger/`). To try berth without touching the real
-ledger, set both variables to temporary directories.
-
 ## Development
 
 ```sh
@@ -304,12 +216,6 @@ commands directly.
 - `src/refs/shared.ts`: shared snapshot replacement and source archive downloads.
 - `src/refs/shopify-docs.ts`: developer docs, Flow manual, and local images.
 - `src/refs/process.ts`: scoped child-process execution.
-- `berth.ts`: berth executable; only runtime wiring.
-- `src/berth/command.ts`: the CLI and its JSON contract.
-- `src/berth/lease.ts`: `acquire`, `release`, `show` and `list`.
-- `src/berth/domain.ts`: the ledger state and its pure transitions.
-- `src/berth/ledger.ts`: the generation ledger and its compare-and-swap.
-- `src/berth/shopify.ts`: the Shopify CLI's dev session files.
 - `vite.config.ts`: formatting, lint, TypeScript checks, and the test scope.
 
 Give future tools named entry points at the repository root, with supporting
@@ -347,9 +253,8 @@ untracked `.env`, `.env.<suffix>` (`.env.staging`, not the tracked
 `node_modules` (`apps/testbed/.env` as well as `.env`), to the same path in the
 worktree, when the worktree has that path's folder. A worktree's `.env` is the
 main checkout's file, so an edit in either is seen by every checkout. With a `package.json` it runs `vp install --frozen-lockfile`. It runs
-no package script: berth leases come on demand from `vp run dev` and e2e, so a
-repo needs no worktree hooks, and a worktree made by another tool works the
-same. `init` only shares again. A copy of a shared file identical to the main
+no package script, so a repo needs no worktree hooks, and a worktree made by
+another tool works the same. `init` only shares again. A copy of a shared file identical to the main
 checkout's, as an older `wt` left `.env`, becomes the link; any other file, or a
 link pointing elsewhere, fails rather than being replaced. `rm` removes only landed work: no commits
 beyond origin's default branch, or a merged pull request whose head is the
@@ -357,8 +262,7 @@ branch's tip, which is what a squash merge leaves. It then tears down every app
 in the worktree, at any depth outside `node_modules` and `.git`: `rigging server
 stop <name>` with that folder's own `node_modules/.bin/rigging` for each
 `.rigging/servers/<name>/record.json` (or, with no such bin, a stop of the
-recorded process group), then `berth release` in each folder with a
-`berth.json`. A failed step stops `rm` before it
+recorded process group). A failed step stops `rm` before it
 removes anything. Then it stops what the worktree left running, removes the
 worktree and deletes the branch. After `wt rm` from inside the worktree, `cd`
 out: the directory is gone.
@@ -368,7 +272,7 @@ progress on stderr. A typed failure exits 1 with `{ "wt": 1, "error": { "_tag",
 "message", ... } }`; a usage error exits 2. `$WT_ROOT` moves the worktrees
 root.
 
-Put it on PATH like berth, with `~/.local/bin/wt`:
+Put it on PATH with `~/.local/bin/wt`:
 
 ```sh
 #!/bin/sh

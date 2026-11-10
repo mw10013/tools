@@ -180,7 +180,7 @@ describe("wt rm", () => {
 
     const appWithServer = async (name: string) => {
       fs.mkdirSync(path.join(repo, "apps", "x"), { recursive: true });
-      fs.writeFileSync(path.join(repo, "apps", "x", "berth.json"), "{}\n");
+      fs.writeFileSync(path.join(repo, "apps", "x", "package.json"), "{}\n");
       git(repo, "add", ".");
       git(repo, "commit", "--quiet", "-m", "app");
       git(repo, "push", "--quiet", "origin", "main");
@@ -212,26 +212,24 @@ describe("wt rm", () => {
       process.env.PATH = savedPath;
     });
 
-    it("stops a nested app's server and releases its leases from the app's folder, then removes", async () => {
-      fake("berth", 0);
+    it("stops a nested app's server from the app's folder, then removes", async () => {
       const worktree = await appWithServer("teardown");
       const removed = await remove("teardown");
       expect(Exit.isSuccess(removed) && removed.value.steps).toStrictEqual([
         "rigging server stop dev in apps/x",
-        "berth release in apps/x",
         "git worktree remove",
         "git branch -D",
       ]);
       const app = path.join(worktree, "apps", "x");
       expect(fs.readFileSync(calls, "utf8")).toBe(
-        `rigging server stop dev in ${app}\nberth release in ${app}\n`,
+        `rigging server stop dev in ${app}\n`,
       );
       expect(fs.existsSync(worktree)).toBe(false);
     }, 30_000);
 
     it("keeps the worktree and branch when a teardown step fails", async () => {
-      fake("berth", 1);
       const worktree = await appWithServer("held");
+      fake("rigging", 1);
       expect(failureTag(await remove("held"))).toBe("CommandFailedError");
       expect(fs.existsSync(worktree)).toBe(true);
       expect(git(repo, "branch", "--list", "held")).not.toBe("");
