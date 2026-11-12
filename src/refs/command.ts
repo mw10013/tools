@@ -67,6 +67,7 @@ const source = {
     "shopify-session-storage-do",
     "shopify-docs",
     "m4l-docs",
+    "hledger",
     "vite-plus",
     "vite",
     "vitest",
@@ -150,6 +151,9 @@ const status = Command.make(
       Match.when("m4l-docs", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.m4lDocsStatus)),
       ),
+      Match.when("hledger", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.hledgerStatus)),
+      ),
       Match.exhaustive,
       Effect.flatMap(Console.log),
       userError,
@@ -229,6 +233,9 @@ const sync = Command.make(
       Match.when("m4l-docs", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.m4lDocsSync)),
       ),
+      Match.when("hledger", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.hledgerSync)),
+      ),
       Match.exhaustive,
       Effect.flatMap(Console.log),
       userError,
@@ -237,7 +244,7 @@ const sync = Command.make(
 ).pipe(
   Command.withShortDescription("Download or synchronize reference sources"),
   Command.withDescription(
-    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Astryx, Effect, TanStack Start/Form, Better Auth, Alchemy, Playwright, Shopify App JS, GraphQL.js, GraphQL Yoga, and StyleX follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs and Shopify Session Storage DO download fresh branch archives to the shared directory on every sync. Cloudflare CLI, Chrome DevTools, Shopify CLI, and T3 Code follow their installed versions. T3 Code reads the macOS nightly app version. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code. M4L docs refreshes the Max for Live guide, Live Object Model, and v8 and Node for Max APIs with local images.",
+    "Without a reference name, initialize refs and sync all supported dependencies declared in the project. Named project sync also initializes refs automatically. Unchanged pins reuse existing snapshots. Astryx, Effect, TanStack Start/Form, Better Auth, Alchemy, Playwright, Shopify App JS, GraphQL.js, GraphQL Yoga, and StyleX follow project dependency pins. Vite+, Vite, and Vitest follow the global Vite+ toolchain. Cloudflare docs and Shopify Session Storage DO download fresh branch archives to the shared directory on every sync. Cloudflare CLI, Chrome DevTools, Shopify CLI, and T3 Code follow their installed versions. T3 Code reads the macOS nightly app version. Shopify docs refreshes latest developer docs and the Flow manual with local images and Polaris runtime code. M4L docs refreshes the Max for Live guide, Live Object Model, and v8 and Node for Max APIs with local images. hledger downloads the source matching the installed hledger version.",
   ),
   Command.withExamples([
     {

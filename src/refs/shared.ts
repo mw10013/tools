@@ -187,6 +187,34 @@ export const t3Sync = (root: string) =>
     "v",
   );
 
+export const hledgerStatus = (root: string) => presence(root, "hledger");
+
+/** `hledger --version` prints e.g. `hledger 1.52.4, mac-aarch64`. */
+export const hledgerSync = Effect.fn("Shared.hledgerSync")(function* (
+  root: string,
+) {
+  const output = yield* Process.run(".", "hledger", ["--version"]).pipe(
+    Effect.mapError(
+      () =>
+        new SharedRefError({
+          message:
+            "Cannot read the installed hledger version; ensure `hledger --version` works on your PATH",
+        }),
+    ),
+  );
+  const version = /^hledger (\d+\.\d+\.\d+)(?:[,\s]|$)/u.exec(output)?.[1];
+  if (version === undefined)
+    return yield* new SharedRefError({
+      message: "Could not parse the version reported by `hledger --version`",
+    });
+  const destination = yield* download(
+    root,
+    "hledger",
+    `https://codeload.github.com/simonmichael/hledger/tar.gz/refs/tags/${version}`,
+  );
+  return `hledger: downloaded ${version} (${destination})`;
+});
+
 export const cloudflareStatus = (root: string) =>
   presence(root, "cloudflare-docs");
 
