@@ -73,6 +73,11 @@ export const sources = {
     dependency: "@stylexjs/stylex",
     tag: "",
   },
+  foldkit: {
+    repository: "foldkit/foldkit",
+    dependency: "foldkit",
+    tag: "foldkit@",
+  },
 } as const;
 export type Reference = keyof typeof sources;
 
