@@ -81,6 +81,7 @@ const source = {
     "graphql",
     "graphql-yoga",
     "stylex",
+    "foldkit",
   ]).pipe(
     Argument.withDescription(
       "Reference to inspect or download; omitted selects all declared project dependencies",
@@ -115,6 +116,7 @@ const status = Command.make(
           "graphql",
           "graphql-yoga",
           "stylex",
+          "foldkit",
         ),
         (reference) => Project.status(project, reference),
       ),
@@ -199,6 +201,7 @@ const sync = Command.make(
           "graphql",
           "graphql-yoga",
           "stylex",
+          "foldkit",
         ),
         (reference) => Project.sync(project, reference),
       ),

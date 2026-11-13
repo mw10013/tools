@@ -45,6 +45,7 @@ ranges are rejected.
 | `graphql`        | `graphql`                          |
 | `graphql-yoga`   | `graphql-yoga`                     |
 | `stylex`         | `@stylexjs/stylex`                 |
+| `foldkit`        | `foldkit`                          |
 
 For example, `vpx ./refs.ts -p /path/to/project sync tanstack-start` downloads into
 that project's shared `refs/tanstack-start/` directory. An undeclared dependency fails
