@@ -78,6 +78,11 @@ export const sources = {
     dependency: "foldkit",
     tag: "foldkit@",
   },
+  xstate: {
+    repository: "statelyai/xstate",
+    dependency: "xstate",
+    tag: "xstate@",
+  },
 } as const;
 export type Reference = keyof typeof sources;
 
