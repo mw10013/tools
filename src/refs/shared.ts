@@ -202,7 +202,8 @@ export const hledgerSync = Effect.fn("Shared.hledgerSync")(function* (
         }),
     ),
   );
-  const version = /^hledger (\d+\.\d+\.\d+)(?:[,\s]|$)/u.exec(output)?.[1];
+  const version = /^hledger (?<version>\d+\.\d+\.\d+)(?:[,\s]|$)/u.exec(output)
+    ?.groups?.version;
   if (version === undefined)
     return yield* new SharedRefError({
       message: "Could not parse the version reported by `hledger --version`",
