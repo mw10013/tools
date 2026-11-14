@@ -5,3 +5,4 @@ coverage/
 /refs
 /tmp/
 /.playwright-cli
+.vitest/
