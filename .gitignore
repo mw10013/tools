@@ -4,3 +4,4 @@ coverage/
 .DS_Store
 /refs
 /tmp/
+/.playwright-cli
