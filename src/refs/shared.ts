@@ -279,6 +279,20 @@ export const shopifySessionStorageDoSync = Effect.fn(
   return `shopify-session-storage-do: downloaded main (${destination})`;
 });
 
+export const effectExtensionsStatus = (root: string) =>
+  presence(root, "effect-extensions");
+
+export const effectExtensionsSync = Effect.fn("Shared.effectExtensionsSync")(
+  function* (root: string) {
+    const destination = yield* download(
+      root,
+      "effect-extensions",
+      "https://codeload.github.com/RyanCallahan312/effect-extensions/tar.gz/refs/heads/main",
+    );
+    return `effect-extensions: downloaded main (${destination})`;
+  },
+);
+
 export const shopifyStatus = (root: string) => presence(root, "shopify-cli");
 
 export const shopifySync = Effect.fn("Shared.shopifySync")(function* (
