@@ -31,21 +31,22 @@ download source archives at the resolved commits. Default and named `catalog:`
 references resolve through the nearest ancestor `pnpm-workspace.yaml`. Version
 ranges are rejected.
 
-| Reference        | Dependency                         |
-| ---------------- | ---------------------------------- |
-| `astryx`         | `@astryxdesign/core`               |
-| `effect`         | `effect`                           |
-| `tanstack-start` | `@tanstack/react-start`            |
-| `tanstack-form`  | `@tanstack/react-form`             |
-| `better-auth`    | `better-auth`                      |
-| `alchemy`        | `alchemy`                          |
-| `distilled`      | `@distilled.cloud/stripe`          |
-| `playwright`     | `@playwright/test` or `playwright` |
-| `shopify-app-js` | `@shopify/shopify-api`             |
-| `graphql`        | `graphql`                          |
-| `graphql-yoga`   | `graphql-yoga`                     |
-| `stylex`         | `@stylexjs/stylex`                 |
-| `foldkit`        | `foldkit`                          |
+| Reference      | Dependency                                     |
+| -------------- | ---------------------------------------------- |
+| astryx         | `@astryxdesign/core`                           |
+| effect         | `effect`                                       |
+| tanstack-start | `@tanstack/react-start`                        |
+| tanstack-form  | `@tanstack/react-form`                         |
+| better-auth    | `better-auth`                                  |
+| alchemy        | `alchemy`                                      |
+| distilled      | `@distilled.cloud/stripe`                      |
+| playwright     | `@playwright/test` or `playwright`             |
+| shopify-app-js | `@shopify/shopify-api`                         |
+| graphql        | `graphql`                                      |
+| graphql-yoga   | `graphql-yoga`                                 |
+| stylex         | `@stylexjs/stylex`                             |
+| foldkit        | `foldkit`                                      |
+| yielded-auth   | `@yielded/auth` or `@yielded/auth-persistence` |
 
 For example, `vpx ./refs.ts -p /path/to/project sync tanstack-start` downloads into
 that project's shared `refs/tanstack-start/` directory. An undeclared dependency fails
@@ -54,7 +55,10 @@ Playwright downloads the monorepo into `refs/playwright/`, preferring the
 `@playwright/test` pin when both packages are declared. It is included in automatic
 project sync; the globally installed browser CLI has no effect on refs.
 Shopify App JS downloads the repository at the release tag for the pinned
-`@shopify/shopify-api` version.
+`@shopify/shopify-api` version. Yielded Auth downloads the repository at the
+per-package release tag for the pinned `@yielded/auth` version (for example
+`@yielded/auth@0.1.0-beta.48`), preferring the `@yielded/auth` pin over
+`@yielded/auth-persistence` when both are declared.
 Astryx downloads the repository at the `v`-prefixed release tag for the pinned
 `@astryxdesign/core` version.
 Git, curl, and tar must be available.
