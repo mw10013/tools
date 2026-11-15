@@ -83,8 +83,27 @@ export const sources = {
     dependency: "xstate",
     tag: "xstate@",
   },
+  "yielded-auth": {
+    repository: "yielded-dev/auth",
+    dependency: "@yielded/auth",
+    tag: "@yielded/auth@",
+  },
 } as const;
 export type Reference = keyof typeof sources;
+
+/** References that accept more than one declaring dependency, most preferred first. */
+const accepted: Partial<Record<Reference, readonly string[]>> = {
+  playwright: ["@playwright/test", "playwright"],
+  "yielded-auth": ["@yielded/auth", "@yielded/auth-persistence"],
+};
+
+/** Dependencies that can declare a reference, most preferred first. */
+export const acceptedDependencies = (reference: Reference) =>
+  accepted[reference] ?? [sources[reference].dependency];
+
+/** Upstream release tag ref for a reference's exact version. */
+export const tagRef = (reference: Reference, version: string) =>
+  `refs/tags/${sources[reference].tag}${version}`;
 
 const WorkspaceCatalogs = Schema.Struct({
   catalog: Schema.optional(Schema.Record(Schema.String, Schema.String)),
@@ -109,11 +128,7 @@ const declaredDependency = (
   manifest: typeof Manifest.Type,
   reference: Reference,
 ) => {
-  const dependencies =
-    reference === "playwright"
-      ? ["@playwright/test", "playwright"]
-      : [sources[reference].dependency];
-  return dependencies.find(
+  return acceptedDependencies(reference).find(
     (dependency) =>
       manifest.dependencies?.[dependency] !== undefined ||
       manifest.devDependencies?.[dependency] !== undefined,
@@ -373,7 +388,7 @@ const syncReference = Effect.fn("Project.syncReference")(function* (
       message: `${destination} is unmanaged; refusing to replace it`,
     });
   }
-  const tag = `refs/tags/${project.tag}${project.version}`;
+  const tag = tagRef(project.reference, project.version);
   const commit = yield* Process.run(project.root, "git", [
     "ls-remote",
     `https://github.com/${project.repository}.git`,
