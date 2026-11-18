@@ -294,6 +294,20 @@ export const effectExtensionsSync = Effect.fn("Shared.effectExtensionsSync")(
   },
 );
 
+export const cursorPluginsStatus = (root: string) =>
+  presence(root, "cursor-plugins");
+
+export const cursorPluginsSync = Effect.fn("Shared.cursorPluginsSync")(
+  function* (root: string) {
+    const destination = yield* download(
+      root,
+      "cursor-plugins",
+      "https://codeload.github.com/cursor/plugins/tar.gz/refs/heads/main",
+    );
+    return `cursor-plugins: downloaded main (${destination})`;
+  },
+);
+
 export const shopifyStatus = (root: string) => presence(root, "shopify-cli");
 
 export const shopifySync = Effect.fn("Shared.shopifySync")(function* (
