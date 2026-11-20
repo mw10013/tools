@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import {
+  isAdopted,
   isWithin,
   orphansIn,
   parseCwds,
@@ -97,6 +98,22 @@ describe("parsers", () => {
         [13, "/c"],
       ]),
     );
+  });
+
+  it("counts pid 1 as an adopter everywhere and a systemd manager only on Linux", () => {
+    const commands = new Map([
+      [1, "/sbin/launchd"],
+      [900, "systemd"],
+      [901, "/usr/lib/systemd/systemd"],
+      [902, "bash"],
+    ]);
+    const child = (ppid: number) => ({ pid: 1000, ppid, command: "workerd" });
+    expect(isAdopted(child(1), commands, "darwin")).toBe(true);
+    expect(isAdopted(child(900), commands, "darwin")).toBe(false);
+    expect(isAdopted(child(900), commands, "linux")).toBe(true);
+    expect(isAdopted(child(901), commands, "linux")).toBe(true);
+    expect(isAdopted(child(902), commands, "linux")).toBe(false);
+    expect(isAdopted(child(903), commands, "linux")).toBe(false);
   });
 
   it("counts a directory and what is below it, not a sibling sharing its prefix", () => {

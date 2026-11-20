@@ -1,8 +1,13 @@
 /**
- * Processes a checkout left running with no owner: their parent is pid 1, and they work inside
- * the checkout. An integration run's workerd becomes one when the test process dies mid-run:
- * Alchemy's sidecar, workerd's parent, exits without stopping it, and it holds its ports until
- * someone kills it.
+ * Processes a checkout left running with no owner: their parent is the process that adopts
+ * orphans, and they work inside the checkout. An integration run's workerd becomes one when the
+ * test process dies mid-run: Alchemy's sidecar, workerd's parent, exits without stopping it, and
+ * it holds its ports until someone kills it.
+ *
+ * On macOS orphans go to launchd, pid 1. On Linux they go to the nearest ancestor that is a child
+ * subreaper (prctl(2) `PR_SET_CHILD_SUBREAPER`), which in a desktop session is the user's
+ * `systemd --user` manager, and only otherwise to pid 1: measured on Arch (Omarchy), where a
+ * shell's background `sleep` was adopted by `systemd --user`.
  *
  * @module
  */
@@ -69,23 +74,60 @@ export const parseCwds = (text: string) => {
 export const isWithin = (cwd: string, directory: string) =>
   cwd === directory || cwd.startsWith(`${directory}${path.sep}`);
 
+type Process = ReturnType<typeof parseProcesses>[number];
+
+/**
+ * Whether a process's parent adopts orphans: pid 1, or on Linux a `systemd` manager, the
+ * subreaper a session's orphans reach. Executables are compared by name, since `ps` may print a
+ * bare name or a path.
+ */
+export const isAdopted = (
+  process: Process,
+  commands: ReadonlyMap<number, string>,
+  platform: NodeJS.Platform,
+) => {
+  if (process.ppid === 1) return true;
+  if (platform !== "linux") return false;
+  const parent = commands.get(process.ppid);
+  return parent !== undefined && path.basename(parent) === "systemd";
+};
+
+/** Each pid's working directory: `/proc/<pid>/cwd` on Linux, which has no `lsof` by default. */
+const cwdsOf = (pids: readonly number[]) => {
+  if (process.platform !== "linux")
+    return parseCwds(
+      output("lsof", [
+        "-a",
+        "-d",
+        "cwd",
+        "-Fpn",
+        "-p",
+        pids.map(String).join(","),
+      ]),
+    );
+  const cwds = new Map<number, string>();
+  for (const pid of pids) {
+    try {
+      cwds.set(pid, fs.readlinkSync(`/proc/${String(pid)}/cwd`));
+    } catch {
+      // Gone already, or not ours to read.
+    }
+  }
+  return cwds;
+};
+
 /** The orphans whose working directory is `directory` or inside it. */
 export const orphansIn = (directory: string): readonly Orphan[] => {
   const root = fs.realpathSync(directory);
-  const parentless = parseProcesses(
+  const processes = parseProcesses(
     output("ps", ["-A", "-o", "pid=,ppid=,comm="]),
-  ).filter((process) => process.ppid === 1);
-  if (parentless.length === 0) return [];
-  const cwds = parseCwds(
-    output("lsof", [
-      "-a",
-      "-d",
-      "cwd",
-      "-Fpn",
-      "-p",
-      parentless.map((process) => String(process.pid)).join(","),
-    ]),
   );
+  const commands = new Map(processes.map(({ pid, command }) => [pid, command]));
+  const parentless = processes.filter((candidate) =>
+    isAdopted(candidate, commands, process.platform),
+  );
+  if (parentless.length === 0) return [];
+  const cwds = cwdsOf(parentless.map(({ pid }) => pid));
   return parentless.flatMap(({ pid, command }) => {
     const cwd = cwds.get(pid);
     return cwd !== undefined && isWithin(cwd, root)
