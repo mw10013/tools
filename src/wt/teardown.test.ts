@@ -42,7 +42,10 @@ describe("Teardown.discover", () => {
   it("stops a single-app root's recorded servers", async () => {
     write(".rigging/servers/dev/record.json");
     write(".rigging/servers/e2e/record.json");
-    write(".rigging/servers/stale/log/current", "");
+    write(
+      ".rigging/servers/stale/runs/2026-11-03T14:56:35.734Z-9df4baf3.log",
+      "",
+    );
     expect(await discover()).toStrictEqual([
       { kind: "rigging-stop", dir: root, name: "dev" },
       { kind: "rigging-stop", dir: root, name: "e2e" },
