@@ -100,8 +100,8 @@ To operate on another project, invoke the entry point by absolute path and pass
 `--project`:
 
 ```sh
-vpx /Users/mw/projects/tools/refs.ts --project /path/to/project init
-vpx /Users/mw/projects/tools/refs.ts --project /path/to/project sync effect
+vpx ~/Projects/tools/refs.ts --project /path/to/project init
+vpx ~/Projects/tools/refs.ts --project /path/to/project sync effect
 ```
 
 ## Shared references
@@ -118,7 +118,7 @@ vpx ./refs.ts sync vitest
 ```
 
 Shared sources live beside the tools repository by default, for example
-`/Users/mw/projects/cloudflare-docs` and `/Users/mw/projects/shopify-cli`.
+`~/Projects/cloudflare-docs` and `~/Projects/shopify-cli`.
 Use `--directory /path/to/projects` to override their parent directory. Relative
 paths resolve from the current working directory. `--project` selects the project
 for project dependencies and `init`; it does not change the shared destination.
@@ -281,7 +281,7 @@ Put it on PATH with `~/.local/bin/wt`:
 
 ```sh
 #!/bin/sh
-exec vpx /Users/mw/projects/tools/wt.ts "$@"
+exec vpx ~/Projects/tools/wt.ts "$@"
 ```
 
 ## Shared app tooling
