@@ -12,4 +12,4 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
 minimumReleaseAgeExclude:
-  - "@mw10013/rigging@0.8.0"
+  - "@mw10013/rigging@0.9.0"
