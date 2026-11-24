@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 
 import * as M4lDocs from "./m4l-docs.ts";
 import * as Process from "./process.ts";
+import * as ReaperDocs from "./reaper-docs.ts";
 import * as ShopifyDocs from "./shopify-docs.ts";
 
 class SharedRefError extends Schema.TaggedError<SharedRefError>()(
@@ -107,6 +108,15 @@ export const m4lDocsSync = (root: string) =>
     Effect.map(
       (destination) =>
         `m4l-docs: downloaded Max for Live docs (${destination})`,
+    ),
+  );
+
+export const reaperDocsStatus = (root: string) => presence(root, "reaper-docs");
+export const reaperDocsSync = (root: string) =>
+  replace(root, "reaper-docs", ReaperDocs.downloadInto).pipe(
+    Effect.map(
+      (destination) =>
+        `reaper-docs: downloaded REAPER API, SDK, guides and community docs (${destination})`,
     ),
   );
 

@@ -112,6 +112,7 @@ vpx ./refs.ts status cloudflare-docs
 vpx ./refs.ts sync shopify-cli
 vpx ./refs.ts sync shopify-docs
 vpx ./refs.ts sync m4l-docs
+vpx ./refs.ts sync reaper-docs
 vpx ./refs.ts sync vite-plus
 vpx ./refs.ts sync vite
 vpx ./refs.ts sync vitest
@@ -235,6 +236,19 @@ Markdown without a browser or crawler. Links between fetched pages point at thei
 Markdown files, images are saved under `_assets/`, and inline SVG diagrams are saved as
 standalone files there. No version or metadata stamp is kept; every explicit sync
 replaces the snapshot.
+
+REAPER docs collects REAPER's scripting documentation into `reaper-docs/`. From Cockos:
+the ReaScript API page split into one Markdown file per function with its Lua, C, EEL2
+and Python signatures, plus the built-in function lists; the
+`justinfrankel/reaper-sdk` repository; the ReaScript, extension SDK, OSC, VST extension
+and JSFX pages; and the user guide, effects guide and REAPER 7 summary PDFs, converted
+with `all2md` (`uv tool install 'all2md[pdf]'`) and split into chapters beside the
+original PDF. The PDFs are found on the user guide page, whose file names carry the
+REAPER version. From the community: `ReaTeam/Doc`, Ultraschall's USDocML documentation
+of the API, config variables, state chunks and web interface, and the `ReaTeam/ReaScripts`
+script repository. It also saves the Lua 5.4 manual. The snapshot's `README.md` says
+what lives where. No metadata stamp is kept; every explicit sync replaces the snapshot.
+Converting the PDFs takes several minutes.
 
 ## Worktrees
 
