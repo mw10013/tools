@@ -69,6 +69,7 @@ const source = {
     "cursor-plugins",
     "shopify-docs",
     "m4l-docs",
+    "reaper-docs",
     "hledger",
     "vite-plus",
     "vite",
@@ -165,6 +166,9 @@ const status = Command.make(
       Match.when("m4l-docs", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.m4lDocsStatus)),
       ),
+      Match.when("reaper-docs", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.reaperDocsStatus)),
+      ),
       Match.when("hledger", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.hledgerStatus)),
       ),
@@ -255,6 +259,9 @@ const sync = Command.make(
       ),
       Match.when("m4l-docs", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.m4lDocsSync)),
+      ),
+      Match.when("reaper-docs", () =>
+        sharedDirectory.pipe(Effect.flatMap(Shared.reaperDocsSync)),
       ),
       Match.when("hledger", () =>
         sharedDirectory.pipe(Effect.flatMap(Shared.hledgerSync)),
