@@ -67,27 +67,6 @@ const ARCHIVES = [
   },
 ] as const;
 
-const ULTRASCHALL =
-  "https://raw.githubusercontent.com/Ultraschall/ultraschall-lua-api-for-reaper/master/ultraschall_api/DocsSourcefiles";
-
-/** Ultraschall's documentation of what Cockos leaves undocumented; its ReaGirl and theme docs are its own. */
-const ULTRASCHALL_DOCS = [
-  { source: "Reaper_Api_Documentation.USDocML", file: "api" },
-  { source: "Reaper_Config_Variables.USDocML", file: "config-variables.md" },
-  {
-    source: "Reaper_StateChunk_Documentation.USDOCML",
-    file: "state-chunks.md",
-  },
-  {
-    source: "Reaper_API_Web_Documentation.USDocML",
-    file: "web-interface.md",
-  },
-  {
-    source: "Reaper_API_Video_Documentation.USDocML",
-    file: "video-processor.md",
-  },
-] as const;
-
 /** REAPER 7 embeds Lua 5.4. */
 const LUA_MANUAL = "https://www.lua.org/manual/5.4/manual.html";
 
@@ -396,181 +375,6 @@ export const pageMarkdown = (
   return `<!-- Source: ${ORIGIN}${pathname} -->\n\n${service.turndown(content.innerHTML)}\n`;
 };
 
-export interface UsDocBloc {
-  readonly fields: ReadonlyMap<string, string>;
-  readonly functioncalls: readonly {
-    readonly language: string;
-    readonly code: string;
-  }[];
-}
-
-const ENTITIES: Readonly<Record<string, string>> = {
-  lt: "<",
-  gt: ">",
-  amp: "&",
-  quot: '"',
-  apos: "'",
-};
-
-/** USDocML indents its text to the XML's depth, in tabs and spaces mixed; strip the common indent. */
-const dedent = (text: string) => {
-  const lines = text.replaceAll("\t", "    ").replaceAll("\r", "").split("\n");
-  const indents = lines
-    .filter((line) => line.trim() !== "")
-    .map((line) => line.length - line.trimStart().length);
-  const indent = Math.min(...indents, Number.MAX_SAFE_INTEGER);
-  return lines
-    .map((line) => line.slice(indent).trimEnd())
-    .join("\n")
-    .trim()
-    .replaceAll(
-      /&(?<entity>lt|gt|amp|quot|apos);/gu,
-      (_, entity: string) => ENTITIES[entity] ?? "",
-    );
-};
-
-/**
- * Ultraschall's USDocML: `<US_DocBloc>` elements whose children hold text, with Markdown in
- * descriptions. Descriptions contain stray HTML, so this matches each child to its own
- * closing tag rather than parsing XML.
- */
-export const parseUsDoc = (xml: string): readonly UsDocBloc[] =>
-  [...xml.matchAll(/<US_DocBloc\b[^>]*>(?<body>[\s\S]*?)<\/US_DocBloc>/gu)].map(
-    (bloc) => {
-      const fields = new Map<string, string>();
-      const functioncalls: { language: string; code: string }[] = [];
-      for (const match of (bloc.groups?.body ?? "").matchAll(
-        /<(?<tag>\w+)(?<attributes>\s[^>]*)?>(?<text>[\s\S]*?)<\/\k<tag>>/gu,
-      )) {
-        const { tag = "", attributes = "", text = "" } = match.groups ?? {};
-        if (tag === "functioncall")
-          functioncalls.push({
-            language:
-              /prog_lang="(?<language>[^"]+)"/u.exec(attributes)?.groups
-                ?.language ?? "",
-            code: dedent(text),
-          });
-        else if (!fields.has(tag)) fields.set(tag, dedent(text));
-      }
-      return { fields, functioncalls };
-    },
-  );
-
-const FENCES: Readonly<Record<string, string>> = {
-  lua: "lua",
-  cpp: "c",
-  eel: "eel2",
-  python: "python",
-};
-
-const listLines = (text: string) =>
-  text
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => `- ${line.trim()}`);
-
-export const renderUsDocBloc = (bloc: UsDocBloc, level: number) => {
-  const field = (name: string) => bloc.fields.get(name) ?? "";
-  const slug = field("slug");
-  const title = field("title") || slug;
-  const chapter = field("chapter_context")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join(" > ");
-  const requires = field("requires")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join(", ");
-  const facts = [
-    title === slug ? "" : `Slug: \`${slug}\``,
-    requires === "" ? "" : `Requires: ${requires}`,
-    chapter === "" ? "" : `Chapter: ${chapter}`,
-    field("tags") === "" ? "" : `Tags: ${field("tags")}`,
-  ].filter(Boolean);
-  const calls = bloc.functioncalls.toSorted(
-    (left, right) =>
-      Object.keys(FENCES).indexOf(left.language) -
-      Object.keys(FENCES).indexOf(right.language),
-  );
-  return [
-    `${"#".repeat(level)} ${title}`,
-    "",
-    ...(facts.length === 0
-      ? []
-      : [facts.map((fact) => `${fact}  `).join("\n"), ""]),
-    ...calls.flatMap(({ language, code }) => [
-      `\`\`\`${FENCES[language] ?? ""}`,
-      code,
-      "```",
-      "",
-    ]),
-    ...(field("description") === "" ? [] : [field("description"), ""]),
-    ...(field("retvals") === ""
-      ? []
-      : ["Returns:", "", ...listLines(field("retvals")), ""]),
-    ...(field("parameters") === ""
-      ? []
-      : ["Parameters:", "", ...listLines(field("parameters")), ""]),
-  ].join("\n");
-};
-
-const UltraschallTitles: Readonly<Record<string, string>> = {
-  "config-variables.md": "REAPER config variables",
-  "state-chunks.md": "REAPER state chunks",
-  "web-interface.md": "REAPER web interface API",
-  "video-processor.md": "REAPER video processor API",
-};
-
-/** The API documentation becomes one file per entry, like `api/`; every other document one file. */
-export const renderUltraschall = (
-  file: string,
-  blocs: readonly UsDocBloc[],
-) => {
-  const files = new Map<string, string>();
-  if (file !== "api") {
-    files.set(
-      file,
-      [
-        `# ${UltraschallTitles[file] ?? file}`,
-        "",
-        ...blocs.map((bloc) => renderUsDocBloc(bloc, 2)),
-      ].join("\n"),
-    );
-    return files;
-  }
-  const index: string[] = [];
-  // macOS file systems ignore case, so `GetTrack` and `getTrack` would share a file.
-  const taken = new Set<string>();
-  for (const bloc of blocs) {
-    const slug = bloc.fields.get("slug") ?? "";
-    if (slug === "") continue;
-    let name = fileName(slug);
-    for (let suffix = 2; taken.has(name.toLowerCase()); suffix += 1)
-      name = `${fileName(slug)}-${String(suffix)}`;
-    taken.add(name.toLowerCase());
-    files.set(`api/${name}.md`, renderUsDocBloc(bloc, 1));
-    const lua = bloc.functioncalls.find(({ language }) => language === "lua");
-    const tags = bloc.fields.get("tags") ?? "";
-    index.push(
-      `- [${slug}](api/${name}.md)${tags === "" ? "" : ` (${tags})`}${lua === undefined ? "" : `: \`${lua.code.replaceAll("\n", " ")}\``}`,
-    );
-  }
-  files.set(
-    "api.md",
-    [
-      "# Ultraschall's REAPER API documentation",
-      "",
-      "Includes SWS, js_ReaScriptAPI, ReaImGui and other extension functions; each entry's `Requires:` names them.",
-      "",
-      ...index,
-      "",
-    ].join("\n"),
-  );
-  return files;
-};
-
 const writeFiles = Effect.fnUntraced(function* (
   directory: string,
   files: ReadonlyMap<string, string>,
@@ -773,7 +577,6 @@ const readme = (
     "## Community",
     "",
     "- `community/reateam-doc/`: https://github.com/ReaTeam/Doc. State chunk definitions (`State Chunk Definitions`), REAPER's command line, web interface modding, video processor API. Its `reascripthelp.html` is a REAPER 6.09 copy; use `api/`.",
-    "- `community/ultraschall/`: Ultraschall's documentation of REAPER (https://github.com/Ultraschall/ultraschall-lua-api-for-reaper), as of its API 5.3 release (May 2025): `api.md` and `api/` cover the REAPER API with SWS, js_ReaScriptAPI and ReaImGui functions, named parameters and return values; `config-variables.md` the `reaper.ini` and project config variables `get_config_var_string` reads; `state-chunks.md` the track, item and envelope state chunk formats; `web-interface.md` REAPER's built-in HTTP web remote. Unofficial, and older than `api/`. `source/` keeps the USDocML.",
     "- `examples/reascripts/`: https://github.com/ReaTeam/ReaScripts, the ReaPack community script repository. Grep it for working calls.",
     "",
     "## Lua",
@@ -784,8 +587,7 @@ const readme = (
 
 /**
  * Collect REAPER's scripting documentation: Cockos's API reference, SDK, developer pages and
- * PDF guides; the ReaTeam and Ultraschall community documentation; ReaTeam's script
- * repository; and the Lua manual. Every source is required; any failure rejects the snapshot.
+ * PDF guides; ReaTeam's documentation and script repository; and the Lua manual. Every source is required; any failure rejects the snapshot.
  * @see https://www.reaper.fm/sdk/reascript/reascript.php
  */
 export const downloadInto = Effect.fn("ReaperDocs.downloadInto")(function* (
@@ -845,24 +647,6 @@ export const downloadInto = Effect.fn("ReaperDocs.downloadInto")(function* (
       ],
     ]),
   );
-
-  const ultraschall = path.join(staging, "community", "ultraschall");
-  yield* Effect.forEach(
-    ULTRASCHALL_DOCS,
-    ({ source, file }) =>
-      Effect.gen(function* () {
-        const xml = yield* requestText(`${ULTRASCHALL}/${source}`);
-        yield* writeFiles(
-          ultraschall,
-          new Map([
-            [`source/${source}`, xml],
-            ...renderUltraschall(file, parseUsDoc(xml)),
-          ]),
-        );
-      }),
-    { concurrency: CONCURRENCY },
-  );
-  yield* Console.log("reaper-docs: Ultraschall documentation");
 
   yield* Effect.forEach(ARCHIVES, ({ repository, branch, directory }) =>
     extractArchive(staging, repository, branch, directory),
