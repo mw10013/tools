@@ -244,9 +244,8 @@ and Python signatures, plus the built-in function lists; the
 and JSFX pages; and the user guide, effects guide and REAPER 7 summary PDFs, converted
 with `all2md` (`uv tool install 'all2md[pdf]'`) and split into chapters beside the
 original PDF. The PDFs are found on the user guide page, whose file names carry the
-REAPER version. From the community: `ReaTeam/Doc`, Ultraschall's USDocML documentation
-of the API, config variables, state chunks and web interface, and the `ReaTeam/ReaScripts`
-script repository. It also saves the Lua 5.4 manual. The snapshot's `README.md` says
+REAPER version. From the community: `ReaTeam/Doc` and the `ReaTeam/ReaScripts` script
+repository. It also saves the Lua 5.4 manual. The snapshot's `README.md` says
 what lives where. No metadata stamp is kept; every explicit sync replaces the snapshot.
 Converting the PDFs takes several minutes.
 
