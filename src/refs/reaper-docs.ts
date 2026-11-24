@@ -49,7 +49,13 @@ const GUIDES = [
   { pattern: /userguide\/WhatsNewReaper[^"']*\.pdf/u, name: "whats-new" },
 ] as const;
 
-const ARCHIVES = [
+const ARCHIVES: readonly {
+  readonly repository: string;
+  readonly branch: string;
+  readonly directory: string;
+  /** Files left out of the snapshot. */
+  readonly exclude?: readonly string[];
+}[] = [
   {
     repository: "justinfrankel/reaper-sdk",
     branch: "main",
@@ -59,13 +65,15 @@ const ARCHIVES = [
     repository: "ReaTeam/Doc",
     branch: "master",
     directory: "community/reateam-doc",
+    // Stale copies of the API reference (REAPER 6.09 and 6.74) that `api/` replaces.
+    exclude: ["reascripthelp.html", "ReaScript_API_Lua.code-snippets"],
   },
   {
     repository: "ReaTeam/ReaScripts",
     branch: "master",
     directory: "examples/reascripts",
   },
-] as const;
+];
 
 /** REAPER 7 embeds Lua 5.4. */
 const LUA_MANUAL = "https://www.lua.org/manual/5.4/manual.html";
@@ -393,6 +401,7 @@ const extractArchive = Effect.fn("ReaperDocs.extractArchive")(function* (
   repository: string,
   branch: string,
   directory: string,
+  exclude: readonly string[],
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -412,6 +421,7 @@ const extractArchive = Effect.fn("ReaperDocs.extractArchive")(function* (
     target,
     "--strip-components=1",
   ]);
+  for (const file of exclude) yield* fs.remove(path.join(target, file));
   yield* Console.log(`reaper-docs: ${repository} → ${directory}/`);
 }, Effect.scoped);
 
@@ -576,7 +586,7 @@ const readme = (
     "",
     "## Community",
     "",
-    "- `community/reateam-doc/`: https://github.com/ReaTeam/Doc. State chunk definitions (`State Chunk Definitions`), REAPER's command line, web interface modding, video processor API. Its `reascripthelp.html` is a REAPER 6.09 copy; use `api/`.",
+    "- `community/reateam-doc/`: https://github.com/ReaTeam/Doc. State chunk definitions (`State Chunk Definitions`), REAPER's command line, web interface modding, video processor API, and X-Raym's notes on marker, region and stretch marker indexing.",
     "- `examples/reascripts/`: https://github.com/ReaTeam/ReaScripts, the ReaPack community script repository. Grep it for working calls.",
     "",
     "## Lua",
@@ -648,8 +658,10 @@ export const downloadInto = Effect.fn("ReaperDocs.downloadInto")(function* (
     ]),
   );
 
-  yield* Effect.forEach(ARCHIVES, ({ repository, branch, directory }) =>
-    extractArchive(staging, repository, branch, directory),
+  yield* Effect.forEach(
+    ARCHIVES,
+    ({ repository, branch, directory, exclude = [] }) =>
+      extractArchive(staging, repository, branch, directory, exclude),
   );
 
   const guidesPage = yield* requestText(`${ORIGIN}${USER_GUIDES_PAGE}`);
