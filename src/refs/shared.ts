@@ -183,19 +183,35 @@ export const chromeDevtoolsSync = (root: string) =>
     "ChromeDevTools/chrome-devtools-mcp",
     "chrome-devtools-mcp-v",
   );
-export const t3Sync = (root: string) =>
-  installedVersionSync(
+
+/** `t3 --version` prints e.g. `t3 v0.1.12-nightly.20261124.5204`. */
+export const t3Version = (output: string) =>
+  /^t3 v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/u.exec(
+    output,
+  )?.groups?.version;
+
+export const t3Sync = Effect.fn("Shared.t3Sync")(function* (root: string) {
+  const output = yield* Process.run(".", "t3", ["--version"]).pipe(
+    Effect.mapError(
+      () =>
+        new SharedRefError({
+          message:
+            "Cannot read the installed T3 Code version; ensure `t3 --version` works on your PATH",
+        }),
+    ),
+  );
+  const version = t3Version(output);
+  if (version === undefined)
+    return yield* new SharedRefError({
+      message: "Could not parse the version reported by `t3 --version`",
+    });
+  const destination = yield* download(
     root,
     "t3code",
-    "/usr/libexec/PlistBuddy",
-    [
-      "-c",
-      "Print :CFBundleShortVersionString",
-      "/Applications/T3 Code (Nightly).app/Contents/Info.plist",
-    ],
-    "pingdotgg/t3code",
-    "v",
+    `https://codeload.github.com/pingdotgg/t3code/tar.gz/refs/tags/v${version}`,
   );
+  return `t3code: downloaded ${version} (${destination})`;
+});
 
 export const hledgerStatus = (root: string) => presence(root, "hledger");
 
